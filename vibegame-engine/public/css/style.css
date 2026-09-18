@@ -80,6 +80,7 @@ button, input, select, textarea {
 }
 #auth-form input:focus { outline: 2px solid var(--amber); outline-offset: 1px; }
 .auth-error { color: var(--coral); font-size: 13px; margin-top: 12px; }
+.auth-error.auth-info { color: var(--teal); }
 .auth-notice {
   background: rgba(255, 180, 84, 0.1);
   border: 1px solid rgba(255, 180, 84, 0.35);

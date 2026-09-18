@@ -8,10 +8,21 @@ export async function fetchProfile(userId) {
   return rows[0] || null;
 }
 
+// Garante que existe uma linha em `profiles` pro usuário logado, criando
+// com cargo "aluno" se ainda não existir. Isso cobre tanto o cadastro
+// normal quanto contas que ficaram "órfãs" (usuário criado no Auth, mas
+// sem perfil) por causa de alguma falha no meio do cadastro anterior.
+async function ensureProfile(user, email) {
+  const existing = await fetchProfile(user.id).catch(() => null);
+  if (existing) return existing;
+  await dbQuery("profiles", {}, { method: "POST", body: { id: user.id, email, role: "aluno" } }).catch(() => {});
+  return await fetchProfile(user.id).catch(() => ({ role: "aluno" }));
+}
+
 export async function requireSession() {
   const session = auth.getSession();
   if (!session) return null;
-  const profile = await fetchProfile(session.user.id).catch(() => null);
+  const profile = await ensureProfile(session.user, session.user.email).catch(() => null);
   return { session, profile };
 }
 
@@ -69,14 +80,35 @@ export function mountLoginScreen(root, onLoggedIn) {
     const password = root.querySelector("#auth-password").value;
     try {
       const data = mode === "signin" ? await auth.signIn(email, password) : await auth.signUp(email, password);
+
+      // Se o Supabase estiver configurado para exigir confirmação por
+      // e-mail, o signup NÃO devolve sessão nem usuário logado ainda —
+      // devolve só o registro do usuário criado (ou, em algumas versões,
+      // um objeto {id: ...} solto). Detectar isso aqui evita quebrar
+      // tentando ler `.user.id` de algo que não é uma sessão.
+      const user = data?.user ?? (data?.id ? data : null);
+      if (!data?.access_token || !user) {
+        errBox.hidden = false;
+        errBox.className = "auth-error auth-info";
+        errBox.textContent = mode === "signup"
+          ? "Conta criada! Verifique seu e-mail e clique no link de confirmação antes de entrar. (Se seu professor desativou a confirmação por e-mail no Supabase, tente entrar de novo em alguns segundos.)"
+          : "Sua conta ainda não foi confirmada — verifique seu e-mail antes de entrar.";
+        submitBtn.disabled = false;
+        submitBtn.textContent = mode === "signin" ? "Entrar" : "Criar conta";
+        return;
+      }
+
       if (mode === "signup") {
         // Cria a linha de perfil padrão (cargo "aluno") na primeira vez.
-        await dbQuery("profiles", {}, { method: "POST", body: { id: data.user.id, email, role: "aluno" } }).catch(() => {});
+        await dbQuery("profiles", {}, { method: "POST", body: { id: user.id, email, role: "aluno" } }).catch(() => {});
       }
-      const profile = await fetchProfile(data.user.id).catch(() => ({ role: "aluno" }));
+      const profile = mode === "signup"
+        ? await fetchProfile(user.id).catch(() => ({ role: "aluno" }))
+        : await ensureProfile(user, email).catch(() => ({ role: "aluno" }));
       onLoggedIn({ session: data, profile });
     } catch (err) {
       errBox.hidden = false;
+      errBox.className = "auth-error";
       errBox.textContent = err.message;
       submitBtn.disabled = false;
       submitBtn.textContent = mode === "signin" ? "Entrar" : "Criar conta";

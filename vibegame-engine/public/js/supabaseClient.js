@@ -1,7 +1,14 @@
 // Cliente Supabase minimalista, feito com fetch puro (sem depender do
 // pacote @supabase/supabase-js). Cobre só o que o VibeGame Engine usa:
 // auth por e-mail/senha, sessão em localStorage e queries REST simples.
-import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
+import { SUPABASE_URL as RAW_SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
+
+// Tira barra(s) no final da URL — um "/" sobrando em config.js (fácil de
+// digitar sem querer) faz toda chamada virar "...co//auth/v1/..." e o
+// Supabase devolve 404 pra rota com barra dupla, com um erro difícil de
+// entender. Resolver aqui uma vez é mais seguro que confiar que ninguém
+// nunca vai colar a URL com "/" no fim.
+const SUPABASE_URL = RAW_SUPABASE_URL.replace(/\/+$/, "");
 
 const SESSION_KEY = "vibegame_session";
 
@@ -38,8 +45,16 @@ async function authRequest(path, body) {
     headers: { "Content-Type": "application/json", apikey: SUPABASE_ANON_KEY },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error_description || data.msg || data.error || "Falha na autenticação.");
+  const data = await res.json().catch(() => ({}));
+  // O Supabase usa nomes de campo diferentes dependendo de QUEM recusou o
+  // pedido: o gateway Kong na frente (chave inválida/faltando) devolve
+  // `message`/`hint`; o GoTrue (auth de verdade) devolve `error_description`,
+  // `msg` ou `error`. Checar só um desses fazia erros reais virarem uma
+  // mensagem genérica e inútil.
+  if (!res.ok) {
+    const reason = data.error_description || data.msg || data.error || data.message || data.hint;
+    throw new Error(reason ? `${reason}` : `Falha na autenticação (HTTP ${res.status}).`);
+  }
   return data;
 }
 
