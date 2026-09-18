@@ -1,5 +1,5 @@
 import { PixelCanvas, DEFAULT_PALETTE, resizePixelMatrix, blankMatrix, paintMatrix } from "../pixelArt/canvasEngine.js";
-import { state, saveSprite } from "../state.js";
+import { state, saveSprite, deleteSprite } from "../state.js";
 import { toast } from "../ui.js";
 
 export function mountPixelEditorTab(panel) {
@@ -36,6 +36,7 @@ export function mountPixelEditorTab(panel) {
           <button id="btn-undo" class="btn-ghost">↩️ Desfazer</button>
           <button id="btn-clear" class="btn-ghost">🗑️ Limpar frame</button>
           <button id="btn-save-sprite" class="btn-primary">💾 Salvar sprite</button>
+          <button id="btn-delete-sprite" class="btn-ghost btn-danger">🗑️ Apagar sprite</button>
         </div>
         <p class="hint">Dica: use os nomes <code>jogador</code>, <code>inimigo</code>,
           <code>item</code> ou <code>cenario</code> para a IA usar sua arte automaticamente
@@ -243,6 +244,22 @@ export function mountPixelEditorTab(panel) {
       const label = document.createElement("span");
       label.textContent = spriteFrames.length > 1 ? `${name} (${spriteFrames.length}f)` : name;
       card.appendChild(label);
+
+      const delBtn = document.createElement("span");
+      delBtn.className = "gallery-card-delete";
+      delBtn.textContent = "✕";
+      delBtn.title = `Apagar "${name}"`;
+      delBtn.addEventListener("click", (e) => {
+        e.stopPropagation(); // não deixa o clique também "abrir" o sprite pra edição
+        if (!confirm(`Apagar o sprite "${name}"? Essa ação não pode ser desfeita.`)) return;
+        deleteSprite(name);
+        if (nameInput.value.trim().toLowerCase() === name) resetEditorToBlank();
+        refreshSelect();
+        refreshGallery();
+        toast(`Sprite "${name}" apagado.`, "success");
+      });
+      card.appendChild(delBtn);
+
       card.addEventListener("click", () => loadSprite(name, sprite));
       galleryEl.appendChild(card);
     });
@@ -263,14 +280,34 @@ export function mountPixelEditorTab(panel) {
     loadSprite(name, state.project.sprites[name]);
   });
 
-  panel.querySelector("#sprite-new").addEventListener("click", () => {
+  function resetEditorToBlank() {
     nameInput.value = "";
-    nameInput.focus();
     const size = Number(sizeSelect.value);
     frames = [blankMatrix(size)];
     editor.setSize(size);
     fitCanvasToWrap();
     loadFrame(0);
+  }
+
+  panel.querySelector("#sprite-new").addEventListener("click", () => {
+    resetEditorToBlank();
+    nameInput.focus();
+  });
+
+  // Apaga o sprite cujo nome está no campo (o que está carregado/sendo
+  // editado no momento). Pede confirmação porque não tem como desfazer.
+  panel.querySelector("#btn-delete-sprite").addEventListener("click", () => {
+    const name = nameInput.value.trim().toLowerCase();
+    if (!name || !state.project.sprites[name]) {
+      toast("Escolha um sprite salvo antes de apagar.", "error");
+      return;
+    }
+    if (!confirm(`Apagar o sprite "${name}"? Essa ação não pode ser desfeita.`)) return;
+    deleteSprite(name);
+    resetEditorToBlank();
+    refreshSelect();
+    refreshGallery();
+    toast(`Sprite "${name}" apagado.`, "success");
   });
 
   panel.querySelector("#btn-save-sprite").addEventListener("click", () => {
