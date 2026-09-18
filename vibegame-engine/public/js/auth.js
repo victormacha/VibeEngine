@@ -20,7 +20,7 @@ async function ensureProfile(user, email) {
 }
 
 export async function requireSession() {
-  const session = auth.getSession();
+  const session = await auth.ensureFreshSession();
   if (!session) return null;
   const profile = await ensureProfile(session.user, session.user.email).catch(() => null);
   return { session, profile };

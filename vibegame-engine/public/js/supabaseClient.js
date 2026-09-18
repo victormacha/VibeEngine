@@ -58,6 +58,26 @@ async function authRequest(path, body) {
   return data;
 }
 
+// Renova a sessão sozinho quando o token estiver perto de vencer (o
+// Supabase expira o access_token depois de ~1h por padrão). Sem isso,
+// qualquer pessoa com a aba aberta por muito tempo (bem comum numa prova
+// com banca avaliando por um bom tempo) começa a ver "JWT expired" do
+// nada. `expires_at` vem em segundos desde epoch; renovamos com uma folga
+// de 1 minuto antes do vencimento real.
+async function ensureFreshSession() {
+  const session = loadSession();
+  if (!session?.refresh_token) return session;
+  const expiresAtMs = session.expires_at ? session.expires_at * 1000 : 0;
+  if (expiresAtMs && expiresAtMs - Date.now() > 60000) return session;
+  try {
+    const fresh = await authRequest("token?grant_type=refresh_token", { refresh_token: session.refresh_token });
+    saveSession(fresh);
+    return fresh;
+  } catch {
+    return session; // falhou em renovar: segue com o que tem (vai dar erro claro adiante, se preciso)
+  }
+}
+
 export const auth = {
   async signUp(email, password) {
     const data = await authRequest("signup", { email, password });
@@ -82,17 +102,25 @@ export const auth = {
   getSession() {
     return loadSession();
   },
+  // Versão que renova o token se estiver perto de vencer — use esta antes
+  // de qualquer chamada autenticada que possa demorar, já que getSession()
+  // sozinho pode devolver um token prestes a expirar.
+  ensureFreshSession,
   currentUser() {
     return loadSession()?.user ?? null;
   },
 };
 
+// URL já limpa (sem barra sobrando), pra quem precisar montar outras
+// chamadas diretas à API do Supabase (ex: a Edge Function de IA em api.js).
+export { SUPABASE_URL };
+
 // Query genérica contra o PostgREST do Supabase, já autenticada com a
-// sessão atual (ou anon, se deslogado). `filters` vira querystring PostgREST,
-// ex: { select: "*", user_id: "eq.123" }.
+// sessão atual (renovando o token sozinho se estiver perto de vencer).
+// `filters` vira querystring PostgREST, ex: { select: "*", user_id: "eq.123" }.
 export async function dbQuery(table, filters = {}, { method = "GET", body } = {}) {
   assertConfigured();
-  const session = loadSession();
+  const session = await ensureFreshSession();
   const qs = new URLSearchParams(filters).toString();
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${qs ? `?${qs}` : ""}`, {
     method,
