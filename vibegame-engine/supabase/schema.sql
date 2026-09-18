@@ -12,15 +12,31 @@ create table if not exists profiles (
 
 alter table profiles enable row level security;
 
+-- Função auxiliar que checa o cargo do usuário logado SEM reativar as
+-- políticas de RLS de "profiles" durante a checagem (security definer
+-- "pula" o RLS na consulta interna). Sem isso, uma política de "profiles"
+-- que consulta "profiles" pra saber o cargo do usuário cria um ciclo
+-- infinito e o Postgres recusa a consulta com "infinite recursion
+-- detected in policy" — inclusive em SELECTs simples do próprio perfil.
+create or replace function public.has_role(roles text[])
+returns boolean
+language sql
+security definer
+set search_path = ''
+stable
+as $$
+  select exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role = any(roles)
+  );
+$$;
+
 create policy "usuário lê o próprio perfil"
   on profiles for select
   using (auth.uid() = id);
 
 create policy "banca e admin leem todos os perfis"
   on profiles for select
-  using (
-    exists (select 1 from profiles p where p.id = auth.uid() and p.role in ('banca', 'admin'))
-  );
+  using (public.has_role(array['banca', 'admin']));
 
 create policy "usuário cria o próprio perfil no cadastro"
   on profiles for insert
@@ -28,9 +44,7 @@ create policy "usuário cria o próprio perfil no cadastro"
 
 create policy "admin atualiza qualquer perfil (ex: promover a banca)"
   on profiles for update
-  using (
-    exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
-  );
+  using (public.has_role(array['admin']));
 
 -- 2. Jogos: um jogo salvo por um aluno.
 create table if not exists games (
@@ -53,9 +67,7 @@ create policy "aluno gerencia os próprios jogos"
 
 create policy "banca e admin leem todos os jogos"
   on games for select
-  using (
-    exists (select 1 from profiles p where p.id = auth.uid() and p.role in ('banca', 'admin'))
-  );
+  using (public.has_role(array['banca', 'admin']));
 
 -- 3. Notas: avaliação de um jogo por um membro da banca.
 create table if not exists scores (
@@ -72,12 +84,8 @@ alter table scores enable row level security;
 
 create policy "banca e admin criam e leem notas"
   on scores for all
-  using (
-    exists (select 1 from profiles p where p.id = auth.uid() and p.role in ('banca', 'admin'))
-  )
-  with check (
-    exists (select 1 from profiles p where p.id = auth.uid() and p.role in ('banca', 'admin'))
-  );
+  using (public.has_role(array['banca', 'admin']))
+  with check (public.has_role(array['banca', 'admin']));
 
 create policy "aluno vê as notas dos próprios jogos"
   on scores for select

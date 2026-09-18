@@ -14,25 +14,43 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// Chama a Gemini com retry/backoff em caso de sobrecarga (503/429), e cai
-// para um modelo de reserva se o principal continuar indisponível.
+// fetch com prazo próprio: sem isso, uma única chamada travada (Gemini
+// demorando demais pra responder) consome sozinha todo o tempo que a
+// função tinha pra tentar o modelo de reserva depois.
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// Chama a Gemini com fallback pra um segundo modelo se o principal estiver
+// sobrecarregado (503/429). O tempo total precisa caber dentro do limite
+// de execução da função serverless (30s neste projeto) — por isso: uma
+// tentativa por modelo (a troca de modelo já funciona como "a segunda
+// chance"), sem atraso artificial entre elas, e um teto de tempo por
+// chamada que não deixe uma única requisição travada consumir tudo.
 async function callGeminiWithRetry({ apiKey, system, contents }) {
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents,
-    generationConfig: { temperature: 0.85, maxOutputTokens: 32768 },
+    generationConfig: { temperature: 0.85, maxOutputTokens: 16384 },
   };
   const models = [GEMINI_MODEL, GEMINI_FALLBACK_MODEL];
-  const delays = [0, 1200, 2800];
+  const delays = [0];
 
   let lastError = { status: 500, message: "Falha ao chamar a IA." };
   for (const model of models) {
     for (const delay of delays) {
       if (delay) await sleep(delay);
       try {
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+          12000
         );
         const data = await res.json();
         if (!res.ok) {
@@ -57,7 +75,11 @@ async function callGeminiWithRetry({ apiKey, system, contents }) {
         }
         return { text };
       } catch (err) {
-        lastError = { status: 500, message: `Falha ao chamar a IA: ${err.message}` };
+        const timedOut = err.name === "AbortError";
+        lastError = {
+          status: timedOut ? 504 : 500,
+          message: timedOut ? "A IA demorou demais para responder." : `Falha ao chamar a IA: ${err.message}`,
+        };
       }
     }
   }
