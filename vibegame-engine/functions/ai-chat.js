@@ -30,13 +30,25 @@ async function fetchWithTimeout(url, options, timeoutMs) {
 // todo o orçamento; só tenta o modelo de reserva se ainda sobrar tempo
 // (o que só acontece se a 1ª tentativa falhou rápido, tipo um erro de
 // sobrecarga, não se ela simplesmente demorou até o teto).
-const TOTAL_BUDGET_MS = 25000;
+const TOTAL_BUDGET_MS = 27000;
 
 async function callGeminiWithRetry({ apiKey, system, contents }) {
   const body = {
     systemInstruction: { parts: [{ text: system }] },
     contents,
-    generationConfig: { temperature: 0.85, maxOutputTokens: 8192 },
+    // Os modelos Gemini 3.x "pensam" antes de responder, e por padrão o
+    // nível de raciocínio é "high" (o mais lento) — pode levar dezenas de
+    // segundos só na etapa de raciocínio antes de começar a escrever o
+    // jogo. "low" corta isso pra priorizar velocidade, o que é o que
+    // importa aqui já que o prompt do sistema já guia bem o formato
+    // esperado da resposta. Como isso libera bastante orçamento de tempo,
+    // dá pra manter um teto de tokens generoso pro código do jogo caber
+    // inteiro sem ser cortado no meio.
+    generationConfig: {
+      temperature: 0.85,
+      maxOutputTokens: 24576,
+      thinkingConfig: { thinkingLevel: "low" },
+    },
   };
   const models = [GEMINI_MODEL, GEMINI_FALLBACK_MODEL];
   const startedAt = Date.now();
@@ -44,7 +56,7 @@ async function callGeminiWithRetry({ apiKey, system, contents }) {
   let lastError = { status: 500, message: "Falha ao chamar a IA." };
   for (const model of models) {
     const remaining = TOTAL_BUDGET_MS - (Date.now() - startedAt);
-    if (remaining < 100) break; // não sobrou tempo útil pra outra tentativa
+    if (remaining < 3000) break; // não sobrou tempo útil pra outra tentativa
     try {
       const res = await fetchWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
