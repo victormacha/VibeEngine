@@ -287,6 +287,17 @@ button, input, select, textarea {
 }
 .gallery-card canvas { image-rendering: pixelated; border-radius: 3px; }
 .gallery-card span { font-size: 12px; }
+.gallery-card-delete {
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 12px !important;
+}
+.gallery-card-delete:hover { color: var(--coral); background: rgba(255, 93, 115, 0.14); }
+
+.btn-danger { color: var(--coral); border-color: var(--coral); }
+.btn-danger:hover { color: var(--coral); border-color: var(--coral); background: rgba(255, 93, 115, 0.12); }
 
 /* ---------- Mechanics tab ---------- */
 .mechanics-panel { padding: 20px; overflow-y: auto; flex: 1; }
