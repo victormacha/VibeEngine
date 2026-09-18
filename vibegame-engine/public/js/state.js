@@ -37,6 +37,10 @@ export function saveSprite(name, sprite) {
   state.project.sprites[name] = sprite;
 }
 
+export function deleteSprite(name) {
+  delete state.project.sprites[name];
+}
+
 export function serializeProject() {
   return JSON.stringify(state.project, null, 2);
 }
