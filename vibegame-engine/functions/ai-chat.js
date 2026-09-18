@@ -44,7 +44,7 @@ async function callGeminiWithRetry({ apiKey, system, contents }) {
   let lastError = { status: 500, message: "Falha ao chamar a IA." };
   for (const model of models) {
     const remaining = TOTAL_BUDGET_MS - (Date.now() - startedAt);
-    if (remaining < 3000) break; // não sobrou tempo útil pra outra tentativa
+    if (remaining < 1000) break; // não sobrou tempo útil pra outra tentativa
     try {
       const res = await fetchWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
