@@ -1,5 +1,5 @@
 import { SYSTEM_PROMPT, buildUserTurn } from "./prompts.js";
-import { auth } from "./supabaseClient.js";
+import { auth, dbQuery } from "./supabaseClient.js";
 import { isLocalHost, getDevKey, askForDevKey } from "./devMode.js";
 
 const GEMINI_MODEL = "gemini-3.6-flash";
@@ -9,36 +9,58 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// Chama a função serverless (functions/ai-chat.js), que por sua vez chama
-// a IA com a chave guardada no servidor. Nenhuma chave passa pelo navegador.
-//
-// Em localhost, se a função não responder (ex: rodando com
-// `python -m http.server`, sem `netlify dev`), cai automaticamente para
-// uma chamada direta à Gemini com uma chave só de teste (sessionStorage).
-// Isso NUNCA acontece fora de localhost.
-export async function askAI({ userText, chatHistory, mechanics, sprites }) {
+// A geração roda numa função em BACKGROUND do Netlify (até 15 minutos, em
+// vez do teto de ~30s de uma função normal), porque um jogo completo pode
+// legitimamente demorar mais que isso. Uma função em background responde
+// 202 assim que começa e NÃO devolve o resultado direto — por isso o fluxo
+// aqui é: cria uma linha "pending" na tabela ai_jobs, dispara a função
+// (sem esperar o corpo da resposta), e fica perguntando ("polling") pra
+// essa mesma linha até aparecer "done" ou "error". Ver
+// functions/ai-chat-background.js pro lado do servidor desse fluxo.
+const POLL_INTERVAL_MS = 1500;
+const POLL_TIMEOUT_MS = 150000; // um pouco acima do orçamento de 120s da função, pra folga
+
+export async function askAI({ userText, chatHistory, mechanics, sprites, onStatus }) {
   const session = auth.getSession();
   const hasExistingGame = chatHistory.some((m) => m.role === "model");
   const message = buildUserTurn(userText, { mechanics, sprites, hasExistingGame });
 
   let functionMissing = false;
   try {
-    const res = await fetch("/.netlify/functions/ai-chat", {
+    if (!session?.user?.id) throw new Error("Sessão expirada. Faça login novamente.");
+    const jobId = crypto.randomUUID();
+
+    // 1) Cria o job como "pending" — assim o navegador já tem o que
+    // consultar mesmo antes da função em background terminar de subir.
+    await dbQuery("ai_jobs", {}, { method: "POST", body: { id: jobId, user_id: session.user.id, status: "pending" } });
+
+    // 2) Dispara a função em background. Não precisa (nem adianta) esperar
+    // o corpo da resposta — o Netlify já respondeu 202 e a função continua
+    // rodando sozinha do outro lado.
+    const startRes = await fetch("/.netlify/functions/ai-chat-background", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        Authorization: `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ system: SYSTEM_PROMPT, history: chatHistory, message }),
+      body: JSON.stringify({ jobId, system: SYSTEM_PROMPT, history: chatHistory, message }),
     });
-
-    if (res.status === 404) functionMissing = true;
-    else if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Erro do servidor (${res.status})`);
-    } else {
-      const data = await res.json();
-      return data.text;
+    if (startRes.status === 404) functionMissing = true;
+    else {
+      // 3) Fica perguntando pro Supabase se o job já terminou.
+      const startedAt = Date.now();
+      while (Date.now() - startedAt < POLL_TIMEOUT_MS) {
+        await sleep(POLL_INTERVAL_MS);
+        const elapsedS = Math.round((Date.now() - startedAt) / 1000);
+        onStatus?.(elapsedS);
+        const rows = await dbQuery("ai_jobs", { select: "status,result,error", id: `eq.${jobId}` });
+        const job = rows[0];
+        if (!job) continue; // ainda não visível pra leitura — tenta de novo
+        if (job.status === "done") return job.result;
+        if (job.status === "error") throw new Error(job.error || "Falha ao chamar a IA.");
+        // status "pending": continua esperando.
+      }
+      throw new Error("A IA demorou demais para responder (mais de 2 minutos). Tente de novo, ou peça algo mais simples.");
     }
   } catch (err) {
     if (!isLocalHost()) throw err;

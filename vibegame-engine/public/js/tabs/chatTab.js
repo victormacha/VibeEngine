@@ -60,13 +60,16 @@ export function mountChatTab(panel, { onGameUpdated }) {
     addMessage("user", text);
     state.project.chatHistory.push({ role: "user", text });
 
-    const thinking = addMessage("system", "Gerando o jogo... (se a IA estiver sobrecarregada, ele tenta de novo sozinho — pode levar alguns segundos a mais)");
+    const thinking = addMessage("system", "Gerando o jogo... (pode levar até 1-2 minutos pra jogos mais elaborados)");
     try {
       const raw = await askAI({
         userText: text,
         chatHistory: state.project.chatHistory,
         mechanics: state.project.mechanics,
         sprites: state.project.sprites,
+        onStatus: (elapsedSeconds) => {
+          thinking.textContent = `Gerando o jogo... (${elapsedSeconds}s — pode levar até 1-2 minutos pra jogos mais elaborados)`;
+        },
       });
       const { code, info, sprites } = parseAIResponse(raw);
       state.project.chatHistory.push({ role: "model", text: raw });

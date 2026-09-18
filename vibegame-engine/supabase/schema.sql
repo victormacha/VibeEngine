@@ -87,6 +87,35 @@ create policy "banca e admin criam e leem notas"
   using (public.has_role(array['banca', 'admin']))
   with check (public.has_role(array['banca', 'admin']));
 
+-- ai_jobs: "quadro de recados" para a geração de jogos em background.
+-- A função serverless (functions/ai-chat-background.js) roda até 15
+-- minutos e não devolve a resposta direto pro navegador — em vez disso
+-- grava aqui, e o navegador fica consultando ("polling") essa tabela até
+-- o job aparecer como pronto. Isso contorna o limite de ~30s de execução
+-- de uma função serverless normal.
+create table if not exists ai_jobs (
+  id uuid primary key,
+  user_id uuid references auth.users(id) not null,
+  status text not null default 'pending' check (status in ('pending', 'done', 'error')),
+  result text,
+  error text,
+  created_at timestamptz default now()
+);
+
+alter table ai_jobs enable row level security;
+
+create policy "usuário lê os próprios jobs"
+  on ai_jobs for select
+  using (auth.uid() = user_id);
+
+create policy "usuário cria os próprios jobs"
+  on ai_jobs for insert
+  with check (auth.uid() = user_id);
+
+create policy "usuário atualiza os próprios jobs"
+  on ai_jobs for update
+  using (auth.uid() = user_id);
+
 create policy "aluno vê as notas dos próprios jogos"
   on scores for select
   using (
