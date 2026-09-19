@@ -16,7 +16,7 @@ export function mountBancaTab(panel) {
 
   async function loadGames() {
     try {
-      const games = await dbQuery("games", { select: "*", order: "created_at.desc" });
+      const games = await dbQuery("games", { select: "*", status: "eq.enviado", order: "submitted_at.desc" });
       if (!games.length) {
         listEl.innerHTML = `<p class="hint">Nenhum jogo enviado ainda.</p>`;
         return;
