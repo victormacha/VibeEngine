@@ -98,14 +98,19 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
 
 - Se \`SPR["jogador"]\` existir, é um objeto \`{ frames: [matriz, matriz, ...],
   frameDuration: <ms> }\` — os frames desenhados manualmente pelo aluno na
-  aba Personagens (1 ou mais poses). Desenhe o frame atual escolhendo o
-  índice pelo tempo decorrido, ex:
+  aba Personagens (1 ou mais poses), NO TAMANHO DE GRADE que o aluno escolheu
+  (a mensagem do aluno informa esse tamanho para cada sprite — veja "grade
+  NxN" no contexto abaixo). Desenhe o frame atual escolhendo o índice pelo
+  tempo decorrido, ex:
   \`const fi = Math.floor(tempoDecorridoMs / SPR.jogador.frameDuration) % SPR.jogador.frames.length;\`
   e pinte \`SPR.jogador.frames[fi]\` num <canvas> offscreen (1 pixel de arte =
-  1 quadrado escalado). NÃO desenhe o jogador por conta própria nesse caso.
-  Faça o mesmo para qualquer outra chave presente em SPR (ex: "inimigo",
-  "item", "cenario"). Use exatamente os nomes de sprite que o usuário
-  mencionar na conversa.
+  1 quadrado escalado, lendo \`SPR.jogador.frames[fi].length\` para o tamanho
+  da grade — NUNCA um número fixo tipo 16 ou 24 hardcoded, porque o aluno pode
+  ter usado outro tamanho). NÃO desenhe o jogador por conta própria nesse
+  caso, e NÃO recrie/substitua o conteúdo de SPR.jogador de forma nenhuma —
+  ele já existe e está pronto, é só ler. Faça o mesmo para qualquer outra
+  chave presente em SPR (ex: "inimigo", "item", "cenario"). Use exatamente os
+  nomes de sprite que o usuário mencionar na conversa.
 - Para QUALQUER sprite que não exista em SPR ainda, desenhe você mesmo (2-4
   frames de animação, ver técnica de pixel art abaixo), mas SEMPRE
   inicializando DENTRO do próprio objeto SPR, assim:
@@ -118,10 +123,33 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   "Reiniciar" sem pedir nada de novo à IA, o jogo já vai carregar a animação
   atualizada, porque SPR é reinjetado a cada execução — só funciona se o
   desenho ler de SPR, nunca de uma cópia local.
-- Se CFG existir, respeite os campos que fizerem sentido para o gênero:
-  movimento, gravidade, forcaPulo, velocidade, vidas, ia_inimigos,
-  condicaoVitoria, pontuacaoAlvo, cenario, paralaxe, musica. Não ignore
-  esses valores — eles são a configuração que o aluno escolheu na engine.
+- Se CFG existir, os valores dele são REQUISITO, não sugestão nem "inspiração" —
+  aplique-os literalmente, mesmo que o resultado fuja do comportamento padrão
+  do gênero escolhido no chat. CFG sempre vence o gênero quando os dois
+  conflitarem: ex. se o gênero pedido foi "plataforma" mas CFG.movimento é
+  "topdown", faça um jogo de visão de cima (SEM gravidade nem pulo) — o campo
+  movimento manda, o rótulo do gênero é só um ponto de partida estético.
+  Mapeamento esperado por campo (não pule nenhum que estiver presente em CFG):
+  - movimento: "plataforma" = gravidade + pulo + colisão com chão/plataformas;
+    "topdown" = 4 direções livres, sem gravidade; "corredor" = scroll
+    automático, jogador só desvia/pula, sem controle de avanço.
+  - gravidade / forcaPulo: usados literalmente na física (só fazem sentido
+    com movimento=plataforma; nos outros modos, ignore-os sem inventar
+    substituto).
+  - velocidade: velocidade de deslocamento do jogador, direto em px/s (ajustado
+    por delta time).
+  - vidas: HUD mostra esse número exato, jogo termina/reseta ao chegar a 0.
+  - ia_inimigos: "patrulha" = anda entre dois pontos fixos; "perseguicao" =
+    persegue o jogador ativamente; "parado" = fica parado, só é obstáculo/dano
+    por contato.
+  - condicaoVitoria: "pontuacao" = vence ao atingir pontuacaoAlvo;
+    "sobreviver" = vence ao aguentar um tempo definido sem condição de
+    pontuação; "chegar_ao_fim" = vence ao alcançar um ponto/área definida do
+    nível, não por pontos.
+  - cenario / paralaxe / musica: já cobertos nas seções de pixel art e
+    "juice" abaixo — aplique-os lá.
+  Nunca substitua um valor presente em CFG por um "padrão mais comum pro
+  gênero" — isso é exatamente o erro que estraga jogos personalizados.
 
 ## Técnica de pixel art (quando desenhar você mesmo)
 - Desenhe como uma matriz de pixels reais (ex.: 16x16 ou 24x24), nunca como
@@ -146,7 +174,19 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
 ## Ao converter/editar um jogo já existente
 Quando a conversa já tiver um jogo (código anterior no histórico) e o pedido
 for uma alteração, preserve tudo que não foi pedido para mudar e devolva o
-arquivo COMPLETO de novo (nunca um diff ou trecho parcial).`;
+arquivo COMPLETO de novo (nunca um diff ou trecho parcial). Se o jogo
+anterior não lia SPR/CFG do jeito certo (código antigo, antes dessas regras),
+corrija isso agora mesmo sem que o aluno precise pedir.
+
+## Checklist final (confira mentalmente ANTES de escrever a resposta)
+- [ ] Toda chave presente em SPR foi lida em tempo de execução — nenhuma foi
+      redesenhada, resumida ou ignorada.
+- [ ] O tamanho da grade de cada sprite veio de \`.frames[i].length\` no
+      código, nunca de um número fixo.
+- [ ] Todo campo presente em CFG foi aplicado literalmente, seguindo o
+      mapeamento da seção de mecânicas — nenhum foi trocado pelo "padrão do
+      gênero" só porque pareceu mais comum.
+- [ ] Se movimento em CFG diverge do gênero conversado, CFG venceu.`;
 
 export const GENRE_TEMPLATES = {
   plataforma: "Crie um jogo de plataforma 2D com pulo, gravidade, plataformas fixas e ao menos um tipo de inimigo que patrulha.",
@@ -157,11 +197,20 @@ export const GENRE_TEMPLATES = {
 };
 
 export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame }) {
-  const spriteNames = Object.keys(sprites || {});
+  const spriteEntries = Object.entries(sprites || {});
   const context = [
-    `Configuração atual da engine (CFG): ${JSON.stringify(mechanics)}`,
-    spriteNames.length
-      ? `Sprites já desenhados manualmente pelo aluno (use-os, não redesenhe): ${spriteNames.join(", ")}`
+    `Configuração atual da engine (CFG) — aplique cada campo literalmente, ` +
+      `não é sugestão: ${JSON.stringify(mechanics)}`,
+    spriteEntries.length
+      ? `Sprites já desenhados manualmente pelo aluno (leia de SPR em tempo de ` +
+        `execução, NÃO redesenhe nem hardcode o tamanho): ` +
+        spriteEntries
+          .map(([name, s]) => {
+            const frames = s.frames || [s.pixels];
+            const gridSize = frames[0]?.length || s.size || "?";
+            return `${name} (grade ${gridSize}x${gridSize}, ${frames.length} frame${frames.length > 1 ? "s" : ""})`;
+          })
+          .join("; ")
       : "Nenhum sprite manual ainda — desenhe você mesmo com capricho, seguindo a técnica de pixel art.",
     hasExistingGame
       ? "Já existe um jogo em andamento nesta conversa — trate o pedido abaixo como uma alteração incremental sobre ele."
