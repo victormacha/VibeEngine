@@ -1,12 +1,13 @@
-import { state } from "./state.js";
+import { state, loadProjectFromRow } from "./state.js";
 import { requireSession, mountLoginScreen } from "./auth.js";
-import { auth } from "./supabaseClient.js";
-import { mountTabs } from "./ui.js";
+import { auth, dbQuery } from "./supabaseClient.js";
+import { mountTabs, toast } from "./ui.js";
 import { mountChatTab } from "./tabs/chatTab.js";
 import { mountPixelEditorTab } from "./tabs/pixelEditorTab.js";
 import { mountMechanicsTab } from "./tabs/mechanicsTab.js";
 import { mountTestTab } from "./tabs/testTab.js";
 import { mountBancaTab } from "./tabs/bancaTab.js";
+import { mountAdminTab } from "./tabs/adminTab.js";
 
 const root = document.getElementById("app");
 
@@ -16,9 +17,32 @@ async function boot() {
   else mountLoginScreen(root, startApp);
 }
 
-function startApp({ session, profile }) {
+// Traz de volta o projeto mais recente do próprio aluno (rascunho ou já
+// enviado), se existir, pra ele continuar de onde parou em vez de começar
+// do zero toda vez que abre a engine de novo.
+async function loadOwnLastProject(userId) {
+  try {
+    const [row] = await dbQuery("games", {
+      select: "*",
+      user_id: `eq.${userId}`,
+      order: "updated_at.desc",
+      limit: "1",
+    });
+    if (row) {
+      loadProjectFromRow(row);
+      toast(`Projeto retomado: ${row.title}`, "info");
+    }
+  } catch {
+    // Sem sorte (offline, tabela ainda não migrada, etc.) — segue com projeto em branco.
+  }
+}
+
+async function startApp({ session, profile }) {
   state.session = session;
   state.profile = profile;
+  if (profile?.role === "aluno" && session.user.id !== "dev-local") {
+    await loadOwnLastProject(session.user.id);
+  }
   renderShell();
 }
 
@@ -58,6 +82,9 @@ function renderShell() {
 
   if (role === "banca" || role === "admin") {
     tabs.push({ id: "banca", icon: "🏆", label: "Avaliação", mount: mountBancaTab });
+  }
+  if (role === "admin") {
+    tabs.push({ id: "admin", icon: "🛠️", label: "Admin", mount: mountAdminTab });
   }
 
   mountTabs(root.querySelector("#tabs-root"), tabs, {
