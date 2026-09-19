@@ -5,6 +5,14 @@ export const state = {
   profile: null,
 
   project: {
+    id: null,        // id da linha em `games` no Supabase — null até o primeiro save.
+                      // Enquanto tiver id, "Salvar" faz UPDATE nessa mesma linha (em vez
+                      // de criar um jogo novo a cada clique), o que é o que permite
+                      // continuar editando o mesmo projeto depois.
+    status: "rascunho", // "rascunho" | "enviado" — só muda pra "enviado" ao clicar em
+                         // "Enviar pra avaliação". Enquanto rascunho, só o próprio aluno
+                         // e admins enxergam o jogo; banca só vê depois de enviado.
+
     title: "Meu Jogo",
     genre: "plataforma",
     chatHistory: [], // { role: "user" | "model", text }
@@ -43,4 +51,19 @@ export function deleteSprite(name) {
 
 export function serializeProject() {
   return JSON.stringify(state.project, null, 2);
+}
+
+// Recarrega um projeto salvo (uma linha da tabela `games`) de volta pro
+// estado do editor — é o que permite "continuar de onde parou" depois de
+// sair e voltar. Substitui o projeto atual inteiro (chamado só no boot,
+// antes do aluno começar a mexer em nada).
+export function loadProjectFromRow(row) {
+  state.project.id = row.id;
+  state.project.status = row.status || "rascunho";
+  state.project.title = row.title || "Meu Jogo";
+  state.project.genre = row.genre || "plataforma";
+  state.project.chatHistory = Array.isArray(row.chat_history) ? row.chat_history : [];
+  state.project.gameCode = row.game_code || "";
+  state.project.sprites = row.sprites || {};
+  Object.assign(state.project.mechanics, row.mechanics || {});
 }
