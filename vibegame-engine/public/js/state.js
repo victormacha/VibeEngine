@@ -19,7 +19,10 @@ export const state = {
     gameCode: "",    // HTML/JS final retornado pela IA
     gameInfo: null,  // { titulo, genero, controles, objetivo }
 
-    sprites: {},     // nome -> { size, frameDuration, frames: [matrizNxN, ...] }
+    sprites: {},     // nome -> { size, anims: { idle: {frameDuration, frames}, andar: {...}, ... } }
+                      // (sprites salvos antes de existirem múltiplas animações têm o formato
+                      // antigo { size, frameDuration, frames } — use normalizeSprite() pra ler
+                      // qualquer sprite de forma uniforme, os dois formatos convivem.)
 
     mechanics: {
       movimento: "plataforma",      // plataforma | topdown | corredor
@@ -47,6 +50,26 @@ export function saveSprite(name, sprite) {
 
 export function deleteSprite(name) {
   delete state.project.sprites[name];
+}
+
+// Sprites salvos antes de existirem múltiplas animações têm o formato
+// antigo `{ size, frameDuration, frames }` (uma animação só). Essa função
+// devolve QUALQUER sprite (antigo ou novo) sempre no formato novo
+// `{ size, anims: { idle: {frameDuration, frames}, ... } }`, tratando o
+// formato antigo como se fosse uma única animação chamada "idle" — assim o
+// resto do app (editor, prompt) só precisa entender um formato só.
+export function normalizeSprite(sprite) {
+  if (sprite && sprite.anims && Object.keys(sprite.anims).length) {
+    return sprite;
+  }
+  const frames = sprite?.frames || (sprite?.pixels ? [sprite.pixels] : null);
+  if (!frames || !frames.length) {
+    return { size: sprite?.size || 24, anims: {} };
+  }
+  return {
+    size: sprite.size || frames[0].length,
+    anims: { idle: { frameDuration: sprite.frameDuration || 150, frames } },
+  };
 }
 
 export function serializeProject() {
