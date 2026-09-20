@@ -28,21 +28,13 @@ controles: <ex: setas para mover, espaço para pular>
 objetivo: <uma frase clara do objetivo>
 -->
 
-3. Se você desenhou algum sprite por conta própria (porque o aluno ainda não
-   tinha desenhado aquele nome em SPR — ver seção de integração), devolva
-   TAMBÉM um terceiro bloco, logo após o GAME_INFO, com os frames exatos que
-   você usou pra cada sprite que desenhou (para o aluno poder abrir na aba
-   Personagens e editar à mão depois, inclusive quadro a quadro da animação).
-   Formato: JSON válido, uma entrada por sprite, cada sprite é um objeto
-   \`{"frames": [matriz1, matriz2, ...], "frameDuration": <ms por frame>}\`,
-   onde cada matriz é NxN de strings hex ("#rrggbb") ou null para
-   transparente — os MESMOS frames que estão embutidos no seu <script>, não
-   uma versão resumida:
-<!--SPRITES_DATA
-{"jogador": {"frames": [[["#000000", null, ...], [...]], [[...]]], "frameDuration": 150}}
--->
-   Se todos os sprites já vieram prontos em SPR (nenhum foi desenhado por
-   você), pode omitir esse terceiro bloco.
+3. NÃO é preciso devolver os sprites numa terceira parte separada — a
+   engine já extrai automaticamente qualquer \`SPR.nome = {...}\` direto do
+   seu próprio bloco de código, contanto que você siga o padrão de
+   inicialização da seção "Integração com a engine" abaixo (\`if (!SPR.x)
+   SPR.x = { frames: [...], frameDuration: ... };\`). Isso é só um lembrete
+   pra você NUNCA pular esse padrão de inicialização por achar redundante —
+   é dele que a engine lê os sprites de volta.
 
 Nunca inclua texto fora dessas partes. Nunca use markdown fora do bloco de código.
 
@@ -94,11 +86,12 @@ e libera espaço/atenção pra você focar na mecânica específica do jogo.
 - **Desenhar sprites de SPR**: em vez de escrever o próprio código de
   seleção de frame + escala + pintura pixel a pixel, chame
   \`Vibe.drawSprite(ctx, SPR.jogador, tempoDecorridoMs, x, y, w, h, { flipX: olhandoPraEsquerda })\`.
-  Ela já lê o formato exato de \`window.VIBE_SPRITES\`/SPRITES_DATA, escolhe o
-  frame certo pelo tempo, escala pro tamanho pedido mantendo pixelado (sem
-  borrão) e cuida do flip horizontal. Isso vale tanto pra sprites do aluno
-  quanto pros que você mesmo desenhar e devolver em SPRITES_DATA — desenhe a
-  arte (a matriz de cores), mas desenhe ELA NA TELA sempre com essa função.
+  Ela já lê o formato exato de \`window.VIBE_SPRITES\` (o mesmo formato de
+  \`SPR.nome = { frames, frameDuration }\`), escolhe o frame certo pelo tempo,
+  escala pro tamanho pedido mantendo pixelado (sem borrão) e cuida do flip
+  horizontal. Isso vale tanto pra sprites do aluno quanto pros que você
+  mesmo desenhar — desenhe a arte (a matriz de cores dentro de SPR), mas
+  desenhe ELA NA TELA sempre com essa função.
 - **Câmera** (essencial em jogos com cenário maior que a tela, tipo torres,
   fases longas ou corredores): \`var cam = Vibe.createCamera({ canvasWidth,
   canvasHeight, worldWidth, worldHeight });\` uma vez fora do loop; a cada
@@ -155,16 +148,21 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   conversa.
 - Para QUALQUER sprite que não exista em SPR ainda, desenhe você mesmo (2-4
   frames de animação, ver técnica de pixel art abaixo), mas SEMPRE
-  inicializando DENTRO do próprio objeto SPR, assim:
+  inicializando DENTRO do próprio objeto SPR, exatamente com o padrão de
+  atribuição abaixo — não mude a forma dessa linha, nem envolva em
+  variável intermediária, nem quebre em várias atribuições parciais:
   \`if (!SPR.jogador) SPR.jogador = { frames: [ [["#3b2f2f",null,...],[...]], [["#3b2f2f",null,...],[...]] ], frameDuration: 150 };\`
   e a função de desenho deve SEMPRE ler de \`SPR.jogador.frames[fi]\` (nunca
   de uma variável local separada tipo \`jogadorFrames\`). Isso é obrigatório
-  por dois motivos: (1) é o que permite devolver os frames no bloco
-  SPRITES_DATA (ver formato de saída) para o aluno editar depois, quadro a
-  quadro; (2) se o aluno editar esse sprite na aba Personagens e clicar em
-  "Reiniciar" sem pedir nada de novo à IA, o jogo já vai carregar a animação
-  atualizada, porque SPR é reinjetado a cada execução — só funciona se o
-  desenho ler de SPR, nunca de uma cópia local.
+  por dois motivos: (1) a engine extrai automaticamente os sprites de volta
+  pra aba Personagens direto dessa linha do seu código — se você desviar
+  desse formato exato (nome diferente de "frames"/"frameDuration", chaves
+  aninhadas de outro jeito, sprite montado por partes em vez de um objeto
+  literal só), a extração falha e o sprite não volta pro aluno editar; (2) se
+  o aluno editar esse sprite na aba Personagens e clicar em "Reiniciar" sem
+  pedir nada de novo à IA, o jogo já vai carregar a animação atualizada,
+  porque SPR é reinjetado a cada execução — só funciona se o desenho ler de
+  SPR, nunca de uma cópia local.
 - Se CFG existir, os valores dele são REQUISITO, não sugestão nem "inspiração" —
   aplique-os literalmente, mesmo que o resultado fuja do comportamento padrão
   do gênero escolhido no chat. CFG sempre vence o gênero quando os dois
@@ -248,7 +246,10 @@ corrija isso agora mesmo sem que o aluno precise pedir.
       (nunca uma versão reescrita na mão) — nenhuma entidade nasce ou fica
       "flutuando" fora da linha do chão.
 - [ ] Sprites de SPR foram desenhados com \`Vibe.drawSprite\`, não com um
-      loop de pintura pixel a pixel escrito na mão.`;
+      loop de pintura pixel a pixel escrito na mão.
+- [ ] Todo sprite novo foi inicializado com \`if (!SPR.nome) SPR.nome = { frames: [...], frameDuration: ... };\`
+      exatamente nesse formato (a engine extrai os sprites direto dessa
+      linha — fugir do formato faz o sprite não voltar pro aluno editar).`;
 
 export const GENRE_TEMPLATES = {
   plataforma: "Crie um jogo de plataforma 2D com pulo, gravidade, plataformas fixas e ao menos um tipo de inimigo que patrulha.",
