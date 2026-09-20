@@ -153,18 +153,90 @@ export function parseAIResponse(rawText) {
 
   // Sprites que a IA desenhou por conta própria (matriz de pixels), pra
   // importar direto na galeria da aba Personagens.
-  let sprites = null;
+  //
+  // Duas fontes, combinadas: (1) o próprio código do jogo já contém
+  // `SPR.nome = { frames: [...], frameDuration }` (é o padrão de
+  // inicialização que o prompt exige) — extraímos isso diretamente do HTML,
+  // sem precisar que a IA mande uma segunda cópia. (2) o bloco separado
+  // SPRITES_DATA, se vier, tem prioridade quando os dois trazem o mesmo
+  // nome (é uma cópia "oficial", pensada pra ser mais limpa de parsear).
+  // Extrair direto do HTML é o que garante que os sprites voltem pra engine
+  // mesmo em jogos grandes, onde a IA às vezes fica sem orçamento de tokens
+  // pra duplicar os dados no bloco separado — sem essa extração, esses
+  // sprites simplesmente sumiam (o jogo funcionava, mas a aba Personagens
+  // ficava vazia).
+  const htmlSprites = extractEmbeddedSprites(code);
+
+  let blockSprites = null;
   const spritesMatch = rawText.match(/<!--SPRITES_DATA([\s\S]*?)-->/i);
   if (spritesMatch) {
     try {
       const parsed = JSON.parse(spritesMatch[1].trim());
-      if (parsed && typeof parsed === "object") sprites = parsed;
+      if (parsed && typeof parsed === "object") blockSprites = parsed;
     } catch {
-      // JSON malformado: ignora silenciosamente, o jogo em si ainda funciona.
+      // JSON malformado nesse bloco: ignora, ainda sobra o que veio do HTML.
     }
   }
 
+  const combined = { ...htmlSprites, ...blockSprites };
+  const sprites = Object.keys(combined).length ? combined : null;
+
   return { code, info, sprites };
+}
+
+// Varre o HTML gerado atrás de atribuições `SPR.nome = {...}` (ou
+// `SPR["nome"] = {...}`) e devolve um objeto { nome: { frames, frameDuration } }
+// com o que achou. Não usa eval/Function em nenhum momento — faz um
+// balanceamento manual de chaves pra recortar o trecho, e uma transformação
+// leve (aspas em chaves soltas, tipo `frames:` → `"frames":`) pra poder usar
+// JSON.parse de forma segura. Qualquer trecho que não fechar direito ou não
+// parsear é ignorado silenciosamente — nunca derruba o resto da importação.
+function extractEmbeddedSprites(html) {
+  const sprites = {};
+  const assignRe = /SPR(?:\.(\w+)|\[["'](\w+)["']\])\s*=\s*/g;
+  let m;
+  while ((m = assignRe.exec(html))) {
+    const name = m[1] || m[2];
+    const start = assignRe.lastIndex;
+    if (html[start] !== "{") continue; // só nos interessa `SPR.x = {...}` (objeto literal)
+
+    let depth = 0;
+    let inStr = false;
+    let strCh = "";
+    let i = start;
+    for (; i < html.length; i++) {
+      const ch = html[i];
+      if (inStr) {
+        if (ch === "\\") { i++; continue; }
+        if (ch === strCh) inStr = false;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") { inStr = true; strCh = ch; continue; }
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) { i++; break; }
+      }
+    }
+    if (depth !== 0) continue; // chave nunca fechou (HTML cortado ou algo estranho) — ignora
+
+    const raw = html.slice(start, i);
+    try {
+      const jsonish = raw
+        .replace(/'/g, '"')
+        .replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":')
+        .replace(/,(\s*[}\]])/g, "$1");
+      const parsed = JSON.parse(jsonish);
+      if (parsed && Array.isArray(parsed.frames) && parsed.frames.length) {
+        sprites[name] = { frames: parsed.frames, frameDuration: parsed.frameDuration || 150 };
+      }
+    } catch {
+      // trecho não virou JSON válido mesmo depois da limpeza — pula esse sprite,
+      // segue tentando os próximos matches do regex.
+    }
+    assignRe.lastIndex = i;
+  }
+  return sprites;
 }
 
 function extractHtmlCode(rawText) {
