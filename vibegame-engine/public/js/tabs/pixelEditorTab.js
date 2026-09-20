@@ -18,6 +18,7 @@ export function mountPixelEditorTab(panel) {
           <option value="16">16 × 16</option>
           <option value="24" selected>24 × 24</option>
           <option value="32">32 × 32</option>
+          <option value="48">48 × 48 (bosses/detalhado)</option>
         </select>
 
         <label>Ferramenta</label>
