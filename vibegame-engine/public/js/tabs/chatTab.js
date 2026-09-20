@@ -1,4 +1,4 @@
-import { state, saveSprite } from "../state.js";
+import { state, saveSprite, normalizeSprite } from "../state.js";
 import { askAI, parseAIResponse } from "../api.js";
 import { toast } from "../ui.js";
 
@@ -79,16 +79,17 @@ export function mountChatTab(panel, { onGameUpdated }) {
 
       // Sprites que a IA desenhou por conta própria: importa pra galeria da
       // aba Personagens, sem sobrescrever nada que o aluno já tenha desenhado.
+      // Aceita os dois formatos que api.js pode devolver (animação única
+      // legada, ou várias animações nomeadas) — normalizeSprite() é só pra
+      // VALIDAR que veio algo utilizável; o que é salvo é o sprite como
+      // veio mesmo, sem reconstruir na mão (evita perder as animações
+      // extras se só olhássemos pra `.frames`).
       let newSpriteCount = 0;
       if (sprites) {
         Object.entries(sprites).forEach(([name, sprite]) => {
-          const frames = sprite?.frames;
-          if (Array.isArray(frames) && frames.length && !state.project.sprites[name]) {
-            saveSprite(name, {
-              size: frames[0].length,
-              frameDuration: sprite.frameDuration || 150,
-              frames,
-            });
+          const hasContent = Object.keys(normalizeSprite(sprite).anims).length > 0;
+          if (hasContent && !state.project.sprites[name]) {
+            saveSprite(name, sprite);
             newSpriteCount++;
           }
         });
