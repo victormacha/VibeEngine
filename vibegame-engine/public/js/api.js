@@ -227,7 +227,19 @@ function extractEmbeddedSprites(html) {
         .replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":')
         .replace(/,(\s*[}\]])/g, "$1");
       const parsed = JSON.parse(jsonish);
-      if (parsed && Array.isArray(parsed.frames) && parsed.frames.length) {
+      if (parsed && parsed.anims && typeof parsed.anims === "object") {
+        // Formato novo: várias animações nomeadas (idle, andar, atacar, ...).
+        // Só guarda as entradas que realmente parecem uma animação válida.
+        const anims = {};
+        Object.entries(parsed.anims).forEach(([animName, anim]) => {
+          if (anim && Array.isArray(anim.frames) && anim.frames.length) {
+            anims[animName] = { frames: anim.frames, frameDuration: anim.frameDuration || 150 };
+          }
+        });
+        if (Object.keys(anims).length) sprites[name] = { anims };
+      } else if (parsed && Array.isArray(parsed.frames) && parsed.frames.length) {
+        // Formato antigo: uma animação só — mantido por compatibilidade,
+        // normalizeSprite() em state.js trata os dois de forma uniforme.
         sprites[name] = { frames: parsed.frames, frameDuration: parsed.frameDuration || 150 };
       }
     } catch {
