@@ -71,34 +71,51 @@ Nunca inclua texto fora dessas partes. Nunca use markdown fora do bloco de códi
   visualmente pra caber em qualquer tela (celular incluso), você não precisa
   se preocupar com isso.
 
-## Física e colisão com o chão (evita o bug nº 1 de "personagem flutuando")
-Quando movimento = "plataforma" (gravidade envolvida), siga ESTE padrão
-exato — não invente sua própria variação, é aqui que a maioria dos erros de
-posicionamento acontece:
-- Defina UMA ÚNICA constante pra altura do chão, ex.
-  \`const GROUND_Y = canvas.height - 80;\` (80 = altura da faixa de chão
-  desenhada). Essa constante é usada tanto pra DESENHAR o retângulo do chão
-  quanto pra RESOLVER a colisão — nunca dois números diferentes pra a mesma
-  coisa, isso é o que causa o personagem "flutuando" acima da linha do chão.
-- Toda entidade que deve ficar em pé no chão (jogador, inimigos que
-  patrulham, NPCs parados) usa \`x, y, width, height\` onde \`y\` é o topo do
-  sprite (convenção padrão de canvas 2D) e \`y + height\` é o "pé" dela.
-- A cada frame, depois de aplicar \`vy += gravidade\` e \`y += vy * dt\`,
-  resolva a colisão assim, pra QUALQUER entidade que deva ficar de pé:
-  \`if (entidade.y + entidade.height > GROUND_Y) { entidade.y = GROUND_Y - entidade.height; entidade.vy = 0; entidade.noChao = true; } else { entidade.noChao = false; }\`
-  Isso garante que o "pé" da entidade encoste exatamente na linha do chão,
-  nunca acima nem afundado nela.
-- Ao criar/spawnar uma entidade nova, já posicione ela com
-  \`y = GROUND_Y - height\` (em pé, encostada), nunca com um \`y\` arbitrário
-  tipo \`canvas.height / 2\` — isso é o que faz o personagem aparecer flutuando
-  no meio da tela antes da física "cair" ele (ou pior, se a gravidade não
-  rodar naquele frame por algum motivo, ele nunca desce).
-- Se o jogo tiver plataformas soltas no ar (não só o chão), use a MESMA
-  lógica de colisão acima pra cada plataforma (comparando contra o topo dela
-  em vez de GROUND_Y), e aplique a que estiver mais próxima abaixo da
-  entidade naquele frame.
-- Câmera/scroll: se o cenário rolar, mova o \`GROUND_Y\` relativo à câmera do
-  mesmo jeito que move os outros elementos — nunca fixe ele quer não role.
+## Motor auxiliar disponível: window.Vibe (USE, não reescreva na mão)
+A engine injeta \`window.Vibe\` no jogo antes do seu <script> rodar — um
+conjunto de funções prontas e testadas pra física, animação de sprite,
+câmera e partículas. PREFIRA sempre essas funções em vez de escrever a
+mesma lógica do zero — é o jeito mais confiável de acertar colisão/animação,
+e libera espaço/atenção pra você focar na mecânica específica do jogo.
+
+- **Física de chão/plataforma** (resolve o bug de "personagem flutuando"):
+  \`Vibe.applyGravity(entidade, CFG.gravidade, dt)\` soma a gravidade em
+  \`entidade.vy\`. Depois de mover a entidade (\`entidade.y += entidade.vy * dt\`),
+  chame \`Vibe.groundCollide(entidade, GROUND_Y)\` pra chão fixo (define você
+  \`const GROUND_Y = canvas.height - 80;\` uma vez só, use sempre essa
+  constante pra desenhar E colidir) — ela encosta o "pé" da entidade na
+  linha, zera \`vy\` e marca \`entidade.onGround\`. Chame isso pra TODA
+  entidade que deve ficar em pé (jogador, inimigos que patrulham, NPCs), não
+  só o jogador. Pra plataformas soltas no ar, use
+  \`Vibe.platformsCollide(entidade, listaDePlataformas)\` no lugar (mesma
+  ideia, mas contra uma lista de retângulos \`{x,y,width,height}\`).
+  Ao criar/spawnar uma entidade, já posicione com \`y = GROUND_Y - height\`
+  (nasce em pé), nunca com um \`y\` arbitrário tipo \`canvas.height / 2\`.
+- **Desenhar sprites de SPR**: em vez de escrever o próprio código de
+  seleção de frame + escala + pintura pixel a pixel, chame
+  \`Vibe.drawSprite(ctx, SPR.jogador, tempoDecorridoMs, x, y, w, h, { flipX: olhandoPraEsquerda })\`.
+  Ela já lê o formato exato de \`window.VIBE_SPRITES\`/SPRITES_DATA, escolhe o
+  frame certo pelo tempo, escala pro tamanho pedido mantendo pixelado (sem
+  borrão) e cuida do flip horizontal. Isso vale tanto pra sprites do aluno
+  quanto pros que você mesmo desenhar e devolver em SPRITES_DATA — desenhe a
+  arte (a matriz de cores), mas desenhe ELA NA TELA sempre com essa função.
+- **Câmera** (essencial em jogos com cenário maior que a tela, tipo torres,
+  fases longas ou corredores): \`var cam = Vibe.createCamera({ canvasWidth,
+  canvasHeight, worldWidth, worldHeight });\` uma vez fora do loop; a cada
+  frame: \`cam.follow(jogador); cam.update(); cam.apply(ctx);\` desenhe todo o
+  mundo (chão, plataformas, entidades — em coordenadas normais, a câmera já
+  desloca tudo) e por fim \`cam.restore(ctx);\` antes de desenhar o HUD (o
+  HUD nunca deve se mover com a câmera).
+- **Partículas** (pro "juice" abaixo): \`var fx = Vibe.createParticleSystem();\`
+  fora do loop; \`fx.emit(x, y, { color: "#ffcc00", count: 12 })\` no
+  momento do impacto/coleta; a cada frame \`fx.update(dt); fx.draw(ctx);\`
+  (depois do mundo, antes do HUD).
+- Utilidades soltas: \`Vibe.clamp(v, min, max)\`, \`Vibe.rectsOverlap(a, b)\`
+  (colisão AABB simples pra dano/coleta, fora do contexto de chão).
+
+Você ainda pode escrever física própria pra algo muito específico que o
+Vibe não cobre (ex. um dash com i-frames, um projétil com trajetória
+parabólica customizada) — só não reescreva o que já existe pronto.
 
 
 A engine injeta AUTOMATICAMENTE um overlay de botões na tela (visível só em
@@ -127,19 +144,15 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
 
 - Se \`SPR["jogador"]\` existir, é um objeto \`{ frames: [matriz, matriz, ...],
   frameDuration: <ms> }\` — os frames desenhados manualmente pelo aluno na
-  aba Personagens (1 ou mais poses), NO TAMANHO DE GRADE que o aluno escolheu
-  (a mensagem do aluno informa esse tamanho para cada sprite — veja "grade
-  NxN" no contexto abaixo). Desenhe o frame atual escolhendo o índice pelo
-  tempo decorrido, ex:
-  \`const fi = Math.floor(tempoDecorridoMs / SPR.jogador.frameDuration) % SPR.jogador.frames.length;\`
-  e pinte \`SPR.jogador.frames[fi]\` num <canvas> offscreen (1 pixel de arte =
-  1 quadrado escalado, lendo \`SPR.jogador.frames[fi].length\` para o tamanho
-  da grade — NUNCA um número fixo tipo 16 ou 24 hardcoded, porque o aluno pode
-  ter usado outro tamanho). NÃO desenhe o jogador por conta própria nesse
-  caso, e NÃO recrie/substitua o conteúdo de SPR.jogador de forma nenhuma —
-  ele já existe e está pronto, é só ler. Faça o mesmo para qualquer outra
-  chave presente em SPR (ex: "inimigo", "item", "cenario"). Use exatamente os
-  nomes de sprite que o usuário mencionar na conversa.
+  aba Personagens (1 ou mais poses), NO TAMANHO DE GRADE que o aluno
+  escolheu. Desenhe com \`Vibe.drawSprite(ctx, SPR.jogador, tempoDecorridoMs, x, y, w, h)\`
+  (ver seção "Motor auxiliar" abaixo — ela já lê o tamanho da grade
+  sozinha, nunca hardcode um número tipo 16 ou 24). NÃO desenhe o jogador
+  por conta própria nesse caso, e NÃO recrie/substitua o conteúdo de
+  SPR.jogador de forma nenhuma — ele já existe e está pronto, é só ler. Faça
+  o mesmo para qualquer outra chave presente em SPR (ex: "inimigo", "item",
+  "cenario"). Use exatamente os nomes de sprite que o usuário mencionar na
+  conversa.
 - Para QUALQUER sprite que não exista em SPR ainda, desenhe você mesmo (2-4
   frames de animação, ver técnica de pixel art abaixo), mas SEMPRE
   inicializando DENTRO do próprio objeto SPR, assim:
@@ -208,7 +221,9 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
 
 ## Capricho e "juice" (o que separa um jogo bom de um genérico)
 - Câmera com leve squash/stretch ou screen shake em impactos.
-- Partículas simples (quadrados/pontos) em coletas, explosões e pulos.
+- Partículas em coletas, explosões e pulos — use \`Vibe.createParticleSystem()\`
+  (ver "Motor auxiliar" acima) em vez de gerenciar a lista de partículas na
+  mão.
 - Parallax de fundo em pelo menos 2 camadas quando CFG.paralaxe for true.
 - Transições suaves entre estados (fade in/out simples), nunca corte seco.
 - Feedback visual imediato para toda ação do jogador.
@@ -229,9 +244,11 @@ corrija isso agora mesmo sem que o aluno precise pedir.
       mapeamento da seção de mecânicas — nenhum foi trocado pelo "padrão do
       gênero" só porque pareceu mais comum.
 - [ ] Se movimento em CFG diverge do gênero conversado, CFG venceu.
-- [ ] Em jogos com gravidade, toda entidade que fica em pé usa a MESMA
-      constante de chão (GROUND_Y) pra desenhar e pra colidir, e nasce já
-      encostada nela — nenhuma "flutuando" no meio da tela.`;
+- [ ] Física de chão/plataforma usou \`Vibe.groundCollide\`/\`Vibe.platformsCollide\`
+      (nunca uma versão reescrita na mão) — nenhuma entidade nasce ou fica
+      "flutuando" fora da linha do chão.
+- [ ] Sprites de SPR foram desenhados com \`Vibe.drawSprite\`, não com um
+      loop de pintura pixel a pixel escrito na mão.`;
 
 export const GENRE_TEMPLATES = {
   plataforma: "Crie um jogo de plataforma 2D com pulo, gravidade, plataformas fixas e ao menos um tipo de inimigo que patrulha.",
