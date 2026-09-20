@@ -71,7 +71,36 @@ Nunca inclua texto fora dessas partes. Nunca use markdown fora do bloco de códi
   visualmente pra caber em qualquer tela (celular incluso), você não precisa
   se preocupar com isso.
 
-## Controles: mobile já está resolvido, siga o contrato de teclas
+## Física e colisão com o chão (evita o bug nº 1 de "personagem flutuando")
+Quando movimento = "plataforma" (gravidade envolvida), siga ESTE padrão
+exato — não invente sua própria variação, é aqui que a maioria dos erros de
+posicionamento acontece:
+- Defina UMA ÚNICA constante pra altura do chão, ex.
+  \`const GROUND_Y = canvas.height - 80;\` (80 = altura da faixa de chão
+  desenhada). Essa constante é usada tanto pra DESENHAR o retângulo do chão
+  quanto pra RESOLVER a colisão — nunca dois números diferentes pra a mesma
+  coisa, isso é o que causa o personagem "flutuando" acima da linha do chão.
+- Toda entidade que deve ficar em pé no chão (jogador, inimigos que
+  patrulham, NPCs parados) usa \`x, y, width, height\` onde \`y\` é o topo do
+  sprite (convenção padrão de canvas 2D) e \`y + height\` é o "pé" dela.
+- A cada frame, depois de aplicar \`vy += gravidade\` e \`y += vy * dt\`,
+  resolva a colisão assim, pra QUALQUER entidade que deva ficar de pé:
+  \`if (entidade.y + entidade.height > GROUND_Y) { entidade.y = GROUND_Y - entidade.height; entidade.vy = 0; entidade.noChao = true; } else { entidade.noChao = false; }\`
+  Isso garante que o "pé" da entidade encoste exatamente na linha do chão,
+  nunca acima nem afundado nela.
+- Ao criar/spawnar uma entidade nova, já posicione ela com
+  \`y = GROUND_Y - height\` (em pé, encostada), nunca com um \`y\` arbitrário
+  tipo \`canvas.height / 2\` — isso é o que faz o personagem aparecer flutuando
+  no meio da tela antes da física "cair" ele (ou pior, se a gravidade não
+  rodar naquele frame por algum motivo, ele nunca desce).
+- Se o jogo tiver plataformas soltas no ar (não só o chão), use a MESMA
+  lógica de colisão acima pra cada plataforma (comparando contra o topo dela
+  em vez de GROUND_Y), e aplique a que estiver mais próxima abaixo da
+  entidade naquele frame.
+- Câmera/scroll: se o cenário rolar, mova o \`GROUND_Y\` relativo à câmera do
+  mesmo jeito que move os outros elementos — nunca fixe ele quer não role.
+
+
 A engine injeta AUTOMATICAMENTE um overlay de botões na tela (visível só em
 touchscreens) que simula as teclas: ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
 Espaço (tecla " ") e a letra "x". Ele funciona disparando eventos reais de
@@ -186,7 +215,10 @@ corrija isso agora mesmo sem que o aluno precise pedir.
 - [ ] Todo campo presente em CFG foi aplicado literalmente, seguindo o
       mapeamento da seção de mecânicas — nenhum foi trocado pelo "padrão do
       gênero" só porque pareceu mais comum.
-- [ ] Se movimento em CFG diverge do gênero conversado, CFG venceu.`;
+- [ ] Se movimento em CFG diverge do gênero conversado, CFG venceu.
+- [ ] Em jogos com gravidade, toda entidade que fica em pé usa a MESMA
+      constante de chão (GROUND_Y) pra desenhar e pra colidir, e nasce já
+      encostada nela — nenhuma "flutuando" no meio da tela.`;
 
 export const GENRE_TEMPLATES = {
   plataforma: "Crie um jogo de plataforma 2D com pulo, gravidade, plataformas fixas e ao menos um tipo de inimigo que patrulha.",
