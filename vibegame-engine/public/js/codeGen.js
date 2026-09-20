@@ -169,16 +169,41 @@ window.Vibe = (function () {
     return Math.floor(elapsedMs / (frameDurationMs || 150)) % frameCount;
   }
 
-  // Desenha um sprite no formato { frames: [matrizNxN, ...], frameDuration }
-  // (é o formato de window.VIBE_SPRITES.<nome> e do bloco SPRITES_DATA)
-  // escalado pra w x h, sempre pixelado (sem borrão), com flip horizontal
-  // opcional pra virar o personagem pro outro lado sem precisar de um
-  // segundo sprite.
-  function drawSprite(ctx, sprite, elapsedMs, x, y, w, h, opts) {
+  // Acha a animação certa dentro de um sprite, aceitando os dois formatos:
+  // o novo, com várias animações nomeadas ({ anims: { idle: {...}, ... } }),
+  // e o antigo, de uma animação só ({ frames: [...], frameDuration }) — pra
+  // jogos salvos antes de existirem animações nomeadas continuarem
+  // funcionando sem reescrever nada.
+  function resolveAnim(sprite, animName) {
+    if (!sprite) return null;
+    if (sprite.anims) {
+      return sprite.anims[animName] || sprite.anims.idle || Object.values(sprite.anims)[0] || null;
+    }
+    if (sprite.frames) return sprite; // formato antigo: o próprio sprite já É a animação
+    return null;
+  }
+
+  // Desenha uma animação de um sprite de window.VIBE_SPRITES, escalado pra
+  // w x h, sempre pixelado (sem borrão), com flip horizontal opcional pra
+  // virar o personagem pro outro lado sem precisar de um segundo sprite.
+  //
+  // Uso (formato atual, com animações nomeadas):
+  //   Vibe.drawSprite(ctx, SPR.jogador, "andar", tempoDecorridoMs, x, y, w, h, { flipX });
+  //
+  // Compatibilidade: se o 3º argumento for um número em vez de string, é
+  // uma chamada no formato ANTIGO (de antes de existirem animações
+  // nomeadas) — os argumentos são reencaixados automaticamente, então jogos
+  // já salvos continuam funcionando mesmo depois dessa engine atualizar.
+  function drawSprite(ctx, sprite, animName, elapsedMs, x, y, w, h, opts) {
+    if (typeof animName !== "string") {
+      // assinatura antiga: drawSprite(ctx, sprite, elapsedMs, x, y, w, h, opts)
+      opts = h; h = w; w = y; y = x; x = elapsedMs; elapsedMs = animName; animName = null;
+    }
     opts = opts || {};
-    if (!sprite || !sprite.frames || !sprite.frames.length) return;
-    var idx = frameIndex(elapsedMs, sprite.frameDuration, sprite.frames.length);
-    var frameCanvas = paintFrameToCanvas(sprite.frames[idx]);
+    var anim = resolveAnim(sprite, animName);
+    if (!anim || !anim.frames || !anim.frames.length) return;
+    var idx = frameIndex(elapsedMs, anim.frameDuration, anim.frames.length);
+    var frameCanvas = paintFrameToCanvas(anim.frames[idx]);
     var prevSmoothing = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
     ctx.save();
@@ -279,12 +304,15 @@ window.Vibe = (function () {
 </script>`;
 
 export function assembleFinalGame(aiHtml, { sprites, mechanics }) {
+  // Passa o sprite quase como está — os dois formatos (novo, com `anims`
+  // nomeadas, ou antigo, de uma animação só) são resolvidos em tempo de
+  // execução por Vibe.drawSprite (ver resolveAnim no motor auxiliar acima).
   const spritesJson = JSON.stringify(
     Object.fromEntries(
-      Object.entries(sprites).map(([name, s]) => [
-        name,
-        { frames: s.frames || [s.pixels], frameDuration: s.frameDuration || 150 },
-      ])
+      Object.entries(sprites).map(([name, s]) => {
+        if (s.anims && Object.keys(s.anims).length) return [name, { anims: s.anims }];
+        return [name, { frames: s.frames || [s.pixels], frameDuration: s.frameDuration || 150 }];
+      })
     )
   );
   const mechanicsJson = JSON.stringify(mechanics);
