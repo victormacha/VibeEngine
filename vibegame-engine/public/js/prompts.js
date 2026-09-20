@@ -181,8 +181,21 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   gênero" — isso é exatamente o erro que estraga jogos personalizados.
 
 ## Técnica de pixel art (quando desenhar você mesmo)
-- Desenhe como uma matriz de pixels reais (ex.: 16x16 ou 24x24), nunca como
-  formas vetoriais suaves (sem arcs/curvas orgânicas de "boneco fofo redondo"). Cada "pixel" é um quadrado sólido.
+- Desenhe como uma matriz de pixels reais, nunca como formas vetoriais suaves
+  (sem arcs/curvas orgânicas de "boneco fofo redondo"). Cada "pixel" é um
+  quadrado sólido. Escolha o tamanho da grade pelo PAPEL do sprite, não use
+  sempre o mesmo número:
+  - Jogador, inimigos comuns, itens: 16x16 ou 24x24 — pequenos e legíveis à
+    distância, é o que joga a maior parte do tempo.
+  - Chefes/bosses ou qualquer personagem central da história (ex. o Leviathan
+    de que o aluno falou): 32x32 no mínimo, 48x48 quando o pedido menciona
+    "detalhado"/"grande"/"boss" explicitamente. Bosses pequenos (16x16) ficam
+    sem presença nenhuma na tela — isso é literalmente o problema que os
+    alunos mais reclamam, então capriche no tamanho quando for um chefe.
+  - Se usar 48x48, pode reduzir pra 2 frames de animação (em vez de 4) nesse
+    sprite específico — a grade maior já ocupa mais espaço na resposta, e é
+    melhor economizar em frames do que devolver bosses pequenos por medo do
+    limite de tokens.
 - Use no máximo 6-8 cores por sprite, com contorno mais escuro (outline
   interno, técnica "selective outlining"), sombreamento simples (1-2 tons
   mais escuros para sombra, 1 tom mais claro para luz) e silhueta legível
