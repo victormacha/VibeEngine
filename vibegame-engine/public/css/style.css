@@ -229,6 +229,9 @@ button, input, select, textarea {
 }
 .sprite-name-row { display: flex; gap: 6px; }
 .sprite-name-row button { font-size: 11px; padding: 6px 8px; }
+.sprite-anim-row { display: flex; gap: 6px; margin-bottom: 4px; }
+.sprite-anim-row select { flex: 1; }
+.sprite-anim-row button { font-size: 11px; padding: 6px 8px; flex-shrink: 0; }
 .tool-row { display: flex; gap: 6px; }
 .tool-btn {
   flex: 1;
