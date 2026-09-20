@@ -83,15 +83,24 @@ e libera espaço/atenção pra você focar na mecânica específica do jogo.
   ideia, mas contra uma lista de retângulos \`{x,y,width,height}\`).
   Ao criar/spawnar uma entidade, já posicione com \`y = GROUND_Y - height\`
   (nasce em pé), nunca com um \`y\` arbitrário tipo \`canvas.height / 2\`.
-- **Desenhar sprites de SPR**: em vez de escrever o próprio código de
-  seleção de frame + escala + pintura pixel a pixel, chame
-  \`Vibe.drawSprite(ctx, SPR.jogador, tempoDecorridoMs, x, y, w, h, { flipX: olhandoPraEsquerda })\`.
-  Ela já lê o formato exato de \`window.VIBE_SPRITES\` (o mesmo formato de
-  \`SPR.nome = { frames, frameDuration }\`), escolhe o frame certo pelo tempo,
-  escala pro tamanho pedido mantendo pixelado (sem borrão) e cuida do flip
-  horizontal. Isso vale tanto pra sprites do aluno quanto pros que você
-  mesmo desenhar — desenhe a arte (a matriz de cores dentro de SPR), mas
-  desenhe ELA NA TELA sempre com essa função.
+- **Desenhar sprites de SPR, com animação certa pro momento certo**: em vez
+  de escrever o próprio código de seleção de frame + escala + pintura pixel
+  a pixel, chame
+  \`Vibe.drawSprite(ctx, SPR.jogador, "andar", tempoDecorridoMs, x, y, w, h, { flipX: olhandoPraEsquerda })\`
+  — o 3º argumento é o NOME da animação a tocar agora (ex.: "idle", "andar",
+  "atacar", "dash", "dano", "morrer" — combine com o que o jogo precisa).
+  Troque esse nome dinamicamente conforme o estado da entidade naquele
+  frame, ex.: \`var anim = entidade.atacando ? "atacar" : Math.abs(entidade.vx) > 0.5 ? "andar" : "idle";\`
+  depois \`Vibe.drawSprite(ctx, SPR.jogador, anim, t, x, y, w, h);\`. Se o nome
+  passado não existir no sprite (ex. pediu "atacar" mas o aluno só desenhou
+  "idle"), a função cai automaticamente pra "idle" sozinha — não precisa
+  verificar isso na mão. Ela já lê os dois formatos possíveis de
+  \`window.VIBE_SPRITES\`/SPR (com animações nomeadas ou o formato antigo de
+  uma animação só), escolhe o frame certo pelo tempo, escala pro tamanho
+  pedido mantendo pixelado (sem borrão) e cuida do flip horizontal. Isso
+  vale tanto pra sprites do aluno quanto pros que você mesmo desenhar —
+  desenhe a arte (a matriz de cores dentro de SPR), mas desenhe ELA NA TELA
+  sempre com essa função.
 - **Câmera** (essencial em jogos com cenário maior que a tela, tipo torres,
   fases longas ou corredores): \`var cam = Vibe.createCamera({ canvasWidth,
   canvasHeight, worldWidth, worldHeight });\` uma vez fora do loop; a cada
@@ -135,34 +144,50 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   const SPR = window.VIBE_SPRITES || {};
   const CFG = window.VIBE_MECHANICS || {};
 
-- Se \`SPR["jogador"]\` existir, é um objeto \`{ frames: [matriz, matriz, ...],
-  frameDuration: <ms> }\` — os frames desenhados manualmente pelo aluno na
-  aba Personagens (1 ou mais poses), NO TAMANHO DE GRADE que o aluno
-  escolheu. Desenhe com \`Vibe.drawSprite(ctx, SPR.jogador, tempoDecorridoMs, x, y, w, h)\`
-  (ver seção "Motor auxiliar" abaixo — ela já lê o tamanho da grade
-  sozinha, nunca hardcode um número tipo 16 ou 24). NÃO desenhe o jogador
-  por conta própria nesse caso, e NÃO recrie/substitua o conteúdo de
-  SPR.jogador de forma nenhuma — ele já existe e está pronto, é só ler. Faça
-  o mesmo para qualquer outra chave presente em SPR (ex: "inimigo", "item",
-  "cenario"). Use exatamente os nomes de sprite que o usuário mencionar na
-  conversa.
-- Para QUALQUER sprite que não exista em SPR ainda, desenhe você mesmo (2-4
-  frames de animação, ver técnica de pixel art abaixo), mas SEMPRE
-  inicializando DENTRO do próprio objeto SPR, exatamente com o padrão de
-  atribuição abaixo — não mude a forma dessa linha, nem envolva em
-  variável intermediária, nem quebre em várias atribuições parciais:
-  \`if (!SPR.jogador) SPR.jogador = { frames: [ [["#3b2f2f",null,...],[...]], [["#3b2f2f",null,...],[...]] ], frameDuration: 150 };\`
-  e a função de desenho deve SEMPRE ler de \`SPR.jogador.frames[fi]\` (nunca
-  de uma variável local separada tipo \`jogadorFrames\`). Isso é obrigatório
-  por dois motivos: (1) a engine extrai automaticamente os sprites de volta
-  pra aba Personagens direto dessa linha do seu código — se você desviar
-  desse formato exato (nome diferente de "frames"/"frameDuration", chaves
-  aninhadas de outro jeito, sprite montado por partes em vez de um objeto
-  literal só), a extração falha e o sprite não volta pro aluno editar; (2) se
-  o aluno editar esse sprite na aba Personagens e clicar em "Reiniciar" sem
-  pedir nada de novo à IA, o jogo já vai carregar a animação atualizada,
-  porque SPR é reinjetado a cada execução — só funciona se o desenho ler de
-  SPR, nunca de uma cópia local.
+- Se \`SPR["jogador"]\` existir, é um sprite com uma ou mais animações
+  nomeadas — os frames desenhados manualmente pelo aluno na aba Personagens,
+  NO TAMANHO DE GRADE que o aluno escolheu. Desenhe SEMPRE com
+  \`Vibe.drawSprite(ctx, SPR.jogador, nomeDaAnimação, tempoDecorridoMs, x, y, w, h)\`
+  (ver seção "Motor auxiliar" acima — ela já resolve qual animação usar e
+  qual o tamanho da grade sozinha, nunca hardcode um número tipo 16 ou 24).
+  NÃO desenhe o jogador por conta própria nesse caso, e NÃO
+  recrie/substitua o conteúdo de SPR.jogador de forma nenhuma — ele já
+  existe e está pronto, é só ler. Faça o mesmo para qualquer outra chave
+  presente em SPR (ex: "inimigo", "item", "cenario"). Use exatamente os
+  nomes de sprite que o usuário mencionar na conversa.
+- Para QUALQUER sprite que não exista em SPR ainda, desenhe você mesmo, mas
+  SEMPRE inicializando DENTRO do próprio objeto SPR, com o padrão de
+  atribuição abaixo — não mude a forma dessa linha, nem envolva em variável
+  intermediária, nem quebre em várias atribuições parciais:
+  \`if (!SPR.jogador) SPR.jogador = { anims: { idle: { frames: [ [["#3b2f2f",null,...],[...]], [[...]] ], frameDuration: 150 }, andar: { frames: [...], frameDuration: 100 } } };\`
+  Cada chave dentro de \`anims\` é o NOME de uma animação — crie quantas o
+  personagem precisar pra aquele jogo específico:
+  - Todo personagem que se move precisa de pelo menos "idle" e "andar" (2-4
+    frames cada). Não entregue um personagem parado a animação inteira,
+    isso é exatamente o "jogo sem vida" que os alunos reclamam.
+  - Se o jogador/inimigo tem uma ação de ataque, dash, ou qualquer skill
+    visível (o pedido do aluno menciona classes, combos, golpes, magias,
+    etc.), crie uma animação PRÓPRIA pra essa ação (ex.: "atacar", "dash",
+    "conjurar") — nunca reaproveite a animação de "andar" ou "idle" pra
+    representar uma ação diferente, isso é o problema de "jogo burro,
+    sem animação específica de ataque" que mais frustra os alunos.
+  - Bosses/inimigos com fases ou golpes especiais também merecem animações
+    próprias por golpe, não só "idle"/"andar".
+  - 2-4 frames por animação é suficiente; animações de ação rápida (ataque,
+    dash) podem ter só 2 frames (início/impacto) se o tempo for curto.
+  A função de desenho deve SEMPRE ler de \`SPR.jogador\` (nunca copiar os
+  frames pra uma variável local tipo \`jogadorFrames\`), e escolher qual
+  animação passar pro \`Vibe.drawSprite\` de acordo com o que a entidade está
+  fazendo naquele frame (ver exemplo na seção "Motor auxiliar" acima). Isso
+  é obrigatório por dois motivos: (1) a engine extrai automaticamente os
+  sprites de volta pra aba Personagens direto dessa linha do seu código —
+  se você desviar desse formato exato (nomes diferentes de "anims"/
+  "frames"/"frameDuration", sprite montado por partes em vez de um objeto
+  literal só), a extração falha e o sprite não volta pro aluno editar; (2)
+  se o aluno editar esse sprite na aba Personagens e clicar em "Reiniciar"
+  sem pedir nada de novo à IA, o jogo já vai carregar as animações
+  atualizadas, porque SPR é reinjetado a cada execução — só funciona se o
+  desenho ler de SPR, nunca de uma cópia local.
 - Se CFG existir, os valores dele são REQUISITO, não sugestão nem "inspiração" —
   aplique-os literalmente, mesmo que o resultado fuja do comportamento padrão
   do gênero escolhido no chat. CFG sempre vence o gênero quando os dois
@@ -211,8 +236,9 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   interno, técnica "selective outlining"), sombreamento simples (1-2 tons
   mais escuros para sombra, 1 tom mais claro para luz) e silhueta legível
   mesmo pequena.
-- Anime com 2-4 frames trocados por tempo (idle/andando/pulando), nunca
-  sprite estático parado o jogo inteiro.
+- Anime com 2-4 frames por animação nomeada (idle, andar, atacar, dash...,
+  ver "Integração com a engine" acima), nunca um personagem que fica
+  estático o jogo inteiro nem uma única animação reaproveitada pra tudo.
 - Paleta coerente com o cenário escolhido em CFG.cenario (dia: cores
   quentes e claras; noite: azuis escuros e contrastes; caverna: terrosos
   e roxos; espaco: preto profundo com acentos neon).
@@ -236,8 +262,6 @@ corrija isso agora mesmo sem que o aluno precise pedir.
 ## Checklist final (confira mentalmente ANTES de escrever a resposta)
 - [ ] Toda chave presente em SPR foi lida em tempo de execução — nenhuma foi
       redesenhada, resumida ou ignorada.
-- [ ] O tamanho da grade de cada sprite veio de \`.frames[i].length\` no
-      código, nunca de um número fixo.
 - [ ] Todo campo presente em CFG foi aplicado literalmente, seguindo o
       mapeamento da seção de mecânicas — nenhum foi trocado pelo "padrão do
       gênero" só porque pareceu mais comum.
@@ -247,9 +271,13 @@ corrija isso agora mesmo sem que o aluno precise pedir.
       "flutuando" fora da linha do chão.
 - [ ] Sprites de SPR foram desenhados com \`Vibe.drawSprite\`, não com um
       loop de pintura pixel a pixel escrito na mão.
-- [ ] Todo sprite novo foi inicializado com \`if (!SPR.nome) SPR.nome = { frames: [...], frameDuration: ... };\`
+- [ ] Todo sprite novo foi inicializado com \`if (!SPR.nome) SPR.nome = { anims: { idle: {...}, ... } };\`
       exatamente nesse formato (a engine extrai os sprites direto dessa
-      linha — fugir do formato faz o sprite não voltar pro aluno editar).`;
+      linha — fugir do formato faz o sprite não voltar pro aluno editar).
+- [ ] Personagens com ataque/dash/skill visível têm uma animação NOMEADA
+      própria pra essa ação (não reaproveitaram "andar" ou "idle") — e o
+      código troca de animação (\`Vibe.drawSprite(..., animCerta, ...)\`)
+      de acordo com o que a entidade está fazendo naquele frame.`;
 
 export const GENRE_TEMPLATES = {
   plataforma: "Crie um jogo de plataforma 2D com pulo, gravidade, plataformas fixas e ao menos um tipo de inimigo que patrulha.",
@@ -266,12 +294,16 @@ export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame })
       `não é sugestão: ${JSON.stringify(mechanics)}`,
     spriteEntries.length
       ? `Sprites já desenhados manualmente pelo aluno (leia de SPR em tempo de ` +
-        `execução, NÃO redesenhe nem hardcode o tamanho): ` +
+        `execução, NÃO redesenhe nem hardcode o tamanho — use Vibe.drawSprite ` +
+        `com o nome da animação certa pra cada momento): ` +
         spriteEntries
           .map(([name, s]) => {
-            const frames = s.frames || [s.pixels];
-            const gridSize = frames[0]?.length || s.size || "?";
-            return `${name} (grade ${gridSize}x${gridSize}, ${frames.length} frame${frames.length > 1 ? "s" : ""})`;
+            const animsMap = s.anims && Object.keys(s.anims).length ? s.anims : { idle: { frames: s.frames || [s.pixels] } };
+            const animList = Object.entries(animsMap)
+              .map(([animName, a]) => `${animName} (${a.frames.length}f)`)
+              .join(", ");
+            const gridSize = Object.values(animsMap)[0]?.frames?.[0]?.length || s.size || "?";
+            return `${name} [grade ${gridSize}x${gridSize} — animações: ${animList}]`;
           })
           .join("; ")
       : "Nenhum sprite manual ainda — desenhe você mesmo com capricho, seguindo a técnica de pixel art.",
