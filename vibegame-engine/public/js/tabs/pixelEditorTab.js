@@ -1,5 +1,5 @@
 import { PixelCanvas, DEFAULT_PALETTE, resizePixelMatrix, blankMatrix, paintMatrix } from "../pixelArt/canvasEngine.js";
-import { state, saveSprite, deleteSprite } from "../state.js";
+import { state, saveSprite, deleteSprite, normalizeSprite } from "../state.js";
 import { toast } from "../ui.js";
 
 export function mountPixelEditorTab(panel) {
@@ -11,6 +11,13 @@ export function mountPixelEditorTab(panel) {
         <div class="sprite-name-row">
           <input id="sprite-name" placeholder="nome do sprite (ex: jogador)" />
           <button id="sprite-new" class="btn-ghost">+ novo</button>
+        </div>
+
+        <label>Animação</label>
+        <div class="sprite-anim-row">
+          <select id="anim-select"></select>
+          <button id="anim-new" class="btn-ghost" title="Nova animação (ex: andar, atacar, dash)">+ anim</button>
+          <button id="anim-del" class="btn-ghost btn-danger" title="Apagar esta animação">🗑️</button>
         </div>
 
         <label>Tamanho do grid</label>
@@ -41,7 +48,9 @@ export function mountPixelEditorTab(panel) {
         </div>
         <p class="hint">Dica: use os nomes <code>jogador</code>, <code>inimigo</code>,
           <code>item</code> ou <code>cenario</code> para a IA usar sua arte automaticamente
-          no jogo, em vez de desenhar por conta própria.</p>
+          no jogo. Crie animações como <code>andar</code>, <code>atacar</code> ou
+          <code>dash</code> dentro do mesmo sprite — a IA escolhe a animação certa pra
+          cada momento do jogo, em vez de usar sempre a mesma pose.</p>
       </aside>
 
       <div class="pixel-main">
@@ -89,6 +98,9 @@ export function mountPixelEditorTab(panel) {
   new ResizeObserver(() => fitCanvasToWrap()).observe(canvasWrapEl);
 
   const nameInput = panel.querySelector("#sprite-name");
+  const animSelect = panel.querySelector("#anim-select");
+  const animNewBtn = panel.querySelector("#anim-new");
+  const animDelBtn = panel.querySelector("#anim-del");
   const sizeSelect = panel.querySelector("#sprite-size");
   const spriteSelect = panel.querySelector("#sprite-select");
   const colorPicker = panel.querySelector("#color-picker");
@@ -99,11 +111,18 @@ export function mountPixelEditorTab(panel) {
   const playBtn = panel.querySelector("#frame-play");
   const previewCanvas = panel.querySelector("#frame-preview");
 
-  // Estado do sprite em edição: uma lista de frames (matrizes NxN) + a
-  // velocidade da animação. currentFrame é o índice sendo desenhado agora.
-  let frames = [blankMatrix(editor.size)];
+  // Estado do sprite em edição: um mapa de animações — cada uma com sua
+  // lista de frames + velocidade própria — no mesmo formato de
+  // `normalizeSprite().anims` (ver state.js). currentAnim é a animação
+  // sendo editada agora, currentFrame o índice do frame dela na tela.
+  let anims = { idle: { frameDuration: 150, frames: [blankMatrix(editor.size)] } };
+  let currentAnim = "idle";
   let currentFrame = 0;
   let playTimer = null;
+
+  function curFrames() {
+    return anims[currentAnim].frames;
+  }
 
   editor.onColorPicked = (c) => (colorPicker.value = c);
 
@@ -134,18 +153,20 @@ export function mountPixelEditorTab(panel) {
   });
 
   // Guarda o que está no canvas de volta no frame atual antes de trocar de
-  // frame/sprite/tamanho — senão a edição em andamento se perde.
+  // frame/animação/sprite/tamanho — senão a edição em andamento se perde.
   function syncCurrentFrameFromEditor() {
-    frames[currentFrame] = editor.pixels.map((r) => r.slice());
+    curFrames()[currentFrame] = editor.pixels.map((r) => r.slice());
   }
 
   function loadFrame(index) {
+    const frames = curFrames();
     currentFrame = Math.max(0, Math.min(index, frames.length - 1));
     editor.loadPixels(frames[currentFrame]);
     renderFramesStrip();
   }
 
   function renderFramesStrip() {
+    const frames = curFrames();
     framesStripEl.innerHTML = "";
     frames.forEach((frame, i) => {
       const thumb = document.createElement("button");
@@ -166,13 +187,15 @@ export function mountPixelEditorTab(panel) {
 
   panel.querySelector("#frame-add").addEventListener("click", () => {
     syncCurrentFrameFromEditor();
+    const frames = curFrames();
     frames.splice(currentFrame + 1, 0, frames[currentFrame].map((r) => r.slice()));
     loadFrame(currentFrame + 1);
   });
 
   panel.querySelector("#frame-del").addEventListener("click", () => {
+    const frames = curFrames();
     if (frames.length <= 1) {
-      toast("O sprite precisa de pelo menos um frame.", "error");
+      toast("A animação precisa de pelo menos um frame.", "error");
       return;
     }
     frames.splice(currentFrame, 1);
@@ -182,15 +205,21 @@ export function mountPixelEditorTab(panel) {
   panel.querySelector("#frame-left").addEventListener("click", () => {
     if (currentFrame === 0) return;
     syncCurrentFrameFromEditor();
+    const frames = curFrames();
     [frames[currentFrame - 1], frames[currentFrame]] = [frames[currentFrame], frames[currentFrame - 1]];
     loadFrame(currentFrame - 1);
   });
 
   panel.querySelector("#frame-right").addEventListener("click", () => {
+    const frames = curFrames();
     if (currentFrame === frames.length - 1) return;
     syncCurrentFrameFromEditor();
     [frames[currentFrame + 1], frames[currentFrame]] = [frames[currentFrame], frames[currentFrame + 1]];
     loadFrame(currentFrame + 1);
+  });
+
+  durationInput.addEventListener("input", () => {
+    anims[currentAnim].frameDuration = Number(durationInput.value) || 150;
   });
 
   playBtn.addEventListener("click", () => {
@@ -201,6 +230,7 @@ export function mountPixelEditorTab(panel) {
       playBtn.textContent = "▶️ Prévia da animação";
       return;
     }
+    const frames = curFrames();
     if (frames.length < 2) {
       toast("Adicione mais de um frame para ter algo pra animar.", "info");
       return;
@@ -220,13 +250,66 @@ export function mountPixelEditorTab(panel) {
   sizeSelect.addEventListener("change", () => {
     const newSize = Number(sizeSelect.value);
     syncCurrentFrameFromEditor();
-    frames = frames.map((f) => resizePixelMatrix(f, newSize));
+    const anim = anims[currentAnim];
+    anim.frames = anim.frames.map((f) => resizePixelMatrix(f, newSize));
     editor.setSize(newSize);
     fitCanvasToWrap();
     renderFramesStrip();
   });
   panel.querySelector("#btn-undo").addEventListener("click", () => editor.undo());
   panel.querySelector("#btn-clear").addEventListener("click", () => editor.clear());
+
+  function refreshAnimSelect() {
+    const names = Object.keys(anims);
+    animSelect.innerHTML = names.map((n) => `<option value="${n}">${n}</option>`).join("");
+    animSelect.value = currentAnim;
+  }
+
+  // Troca de animação dentro do MESMO sprite (idle -> andar -> atacar...).
+  // Diferente de loadSprite: não mexe em `anims` nem no nome do sprite, só
+  // muda qual entrada desse mapa está sendo editada agora.
+  function loadAnim(animName) {
+    currentAnim = animName;
+    const frames = curFrames();
+    const size = frames[0].length;
+    sizeSelect.value = String(size);
+    editor.setSize(size);
+    durationInput.value = anims[currentAnim].frameDuration;
+    loadFrame(0);
+    fitCanvasToWrap();
+  }
+
+  animSelect.addEventListener("change", () => {
+    syncCurrentFrameFromEditor();
+    loadAnim(animSelect.value);
+  });
+
+  animNewBtn.addEventListener("click", () => {
+    const raw = window.prompt("Nome da nova animação (ex: andar, atacar, dash):");
+    if (!raw) return;
+    const animName = raw.trim().toLowerCase().replace(/\s+/g, "_");
+    if (!animName) return;
+    if (anims[animName]) {
+      toast(`Já existe uma animação "${animName}" nesse sprite.`, "error");
+      return;
+    }
+    syncCurrentFrameFromEditor();
+    anims[animName] = { frameDuration: 150, frames: [blankMatrix(Number(sizeSelect.value))] };
+    refreshAnimSelect();
+    loadAnim(animName);
+  });
+
+  animDelBtn.addEventListener("click", () => {
+    const names = Object.keys(anims);
+    if (names.length <= 1) {
+      toast("O sprite precisa de pelo menos uma animação.", "error");
+      return;
+    }
+    if (!confirm(`Apagar a animação "${currentAnim}"? Essa ação não pode ser desfeita.`)) return;
+    delete anims[currentAnim];
+    refreshAnimSelect();
+    loadAnim(Object.keys(anims)[0]);
+  });
 
   function refreshSelect() {
     const names = Object.keys(state.project.sprites);
@@ -236,14 +319,17 @@ export function mountPixelEditorTab(panel) {
   function refreshGallery() {
     galleryEl.innerHTML = "";
     Object.entries(state.project.sprites).forEach(([name, sprite]) => {
-      const spriteFrames = sprite.frames || [sprite.pixels]; // compatível com sprites salvos antes das animações
+      const normalized = normalizeSprite(sprite);
+      const animNames = Object.keys(normalized.anims);
+      if (!animNames.length) return; // sprite vazio/corrompido — não quebra a galeria
+      const firstAnim = normalized.anims[animNames.includes("idle") ? "idle" : animNames[0]];
       const card = document.createElement("button");
       card.className = "gallery-card";
       const c = document.createElement("canvas");
-      paintMatrix(c, spriteFrames[0], { cell: 48 / spriteFrames[0].length });
+      paintMatrix(c, firstAnim.frames[0], { cell: 48 / firstAnim.frames[0].length });
       card.appendChild(c);
       const label = document.createElement("span");
-      label.textContent = spriteFrames.length > 1 ? `${name} (${spriteFrames.length}f)` : name;
+      label.textContent = animNames.length > 1 ? `${name} (${animNames.length} anim)` : name;
       card.appendChild(label);
 
       const delBtn = document.createElement("span");
@@ -268,11 +354,17 @@ export function mountPixelEditorTab(panel) {
 
   function loadSprite(name, sprite) {
     nameInput.value = name;
-    frames = (sprite.frames || [sprite.pixels]).map((f) => f.map((r) => r.slice()));
-    durationInput.value = sprite.frameDuration || 150;
-    sizeSelect.value = String(frames[0].length);
-    loadFrame(0);
-    fitCanvasToWrap();
+    const normalized = normalizeSprite(sprite);
+    // Clona pra não editar o objeto do state direto por acidente antes de
+    // clicar em "Salvar" — só grava de volta explicitamente.
+    anims = {};
+    Object.entries(normalized.anims).forEach(([animName, anim]) => {
+      anims[animName] = { frameDuration: anim.frameDuration, frames: anim.frames.map((f) => f.map((r) => r.slice())) };
+    });
+    if (!Object.keys(anims).length) anims = { idle: { frameDuration: 150, frames: [blankMatrix(24)] } };
+    currentAnim = anims.idle ? "idle" : Object.keys(anims)[0];
+    refreshAnimSelect();
+    loadAnim(currentAnim);
   }
 
   spriteSelect.addEventListener("change", () => {
@@ -283,8 +375,10 @@ export function mountPixelEditorTab(panel) {
 
   function resetEditorToBlank() {
     nameInput.value = "";
-    const size = Number(sizeSelect.value);
-    frames = [blankMatrix(size)];
+    const size = Number(sizeSelect.value) || 24;
+    anims = { idle: { frameDuration: 150, frames: [blankMatrix(size)] } };
+    currentAnim = "idle";
+    refreshAnimSelect();
     editor.setSize(size);
     fitCanvasToWrap();
     loadFrame(0);
@@ -296,14 +390,15 @@ export function mountPixelEditorTab(panel) {
   });
 
   // Apaga o sprite cujo nome está no campo (o que está carregado/sendo
-  // editado no momento). Pede confirmação porque não tem como desfazer.
+  // editado no momento) — todas as animações dele junto. Pede confirmação
+  // porque não tem como desfazer.
   panel.querySelector("#btn-delete-sprite").addEventListener("click", () => {
     const name = nameInput.value.trim().toLowerCase();
     if (!name || !state.project.sprites[name]) {
       toast("Escolha um sprite salvo antes de apagar.", "error");
       return;
     }
-    if (!confirm(`Apagar o sprite "${name}"? Essa ação não pode ser desfeita.`)) return;
+    if (!confirm(`Apagar o sprite "${name}" (com todas as animações)? Essa ação não pode ser desfeita.`)) return;
     deleteSprite(name);
     resetEditorToBlank();
     refreshSelect();
@@ -318,16 +413,21 @@ export function mountPixelEditorTab(panel) {
       return;
     }
     syncCurrentFrameFromEditor();
-    saveSprite(name, {
-      size: editor.size,
-      frameDuration: Number(durationInput.value) || 150,
-      frames: frames.map((f) => f.map((r) => r.slice())),
+    const clonedAnims = {};
+    Object.entries(anims).forEach(([animName, anim]) => {
+      clonedAnims[animName] = {
+        frameDuration: anim.frameDuration,
+        frames: anim.frames.map((f) => f.map((r) => r.slice())),
+      };
     });
+    saveSprite(name, { size: Number(sizeSelect.value), anims: clonedAnims });
     refreshSelect();
     refreshGallery();
-    toast(`Sprite "${name}" salvo (${frames.length} frame${frames.length > 1 ? "s" : ""}).`, "success");
+    const animCount = Object.keys(clonedAnims).length;
+    toast(`Sprite "${name}" salvo (${animCount} animaç${animCount > 1 ? "ões" : "ão"}).`, "success");
   });
 
+  refreshAnimSelect();
   refreshSelect();
   refreshGallery();
   renderFramesStrip();
