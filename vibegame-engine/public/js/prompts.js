@@ -47,8 +47,29 @@ Nunca inclua texto fora dessas partes. Nunca use markdown fora do bloco de códi
   do <canvas>), ou tudo começa dentro de um listener de
   "DOMContentLoaded". Pegar o canvas antes dele existir é o erro nº 1 que
   deixa o jogo com tela preta e sem nenhum aviso — nunca cometa esse erro.
-- Game loop com requestAnimationFrame e movimento por DELTA TIME (nunca por
-  frame fixo — o jogo deve rodar igual em qualquer taxa de atualização).
+- Game loop SEMPRE via \`Vibe.loop(function (dt, nowMs) { ...toda a lógica de
+  update + desenho aqui... })\` (ver "Motor auxiliar" abaixo) — NUNCA escreva
+  seu próprio \`requestAnimationFrame\`/cálculo de \`performance.now() - last\`
+  na mão. Isso não é estilo, é pra evitar um bug sério e recorrente: calcular
+  dt manualmente e esquecer de guardar o timestamp do frame anterior antes
+  do primeiro uso deixa \`dt\` como \`NaN\` no primeiro frame, o que
+  silenciosamente quebra a física pro jogo inteiro (nenhum pulo, nenhuma
+  gravidade, nada se move do jeito esperado) sem nenhum erro visível no
+  console. \`Vibe.loop\` já resolve isso, e limita picos de dt (aba fora de
+  foco) pra física nunca "explodir".
+- Movimento por DELTA TIME (o \`dt\` que \`Vibe.loop\` entrega, em segundos),
+  nunca por frame fixo — o jogo deve rodar igual em qualquer taxa de
+  atualização. MAS: os valores de CFG (\`gravidade\`, \`forcaPulo\`,
+  \`velocidade\`) são calibrados como "quanto por frame a 60fps", não "por
+  segundo" — se você usar CFG.velocidade direto multiplicado só por \`dt\`
+  (que é tipicamente ~0,016), o jogo anda arrastando quase parado. A regra:
+  toda vez que aplicar um valor de CFG que representa velocidade/aceleração
+  (gravidade, forcaPulo, velocidade) a um movimento por dt, multiplique por
+  \`dt * 60\`, não só por \`dt\` — ex.: \`entidade.x += CFG.velocidade * dt * 60;\`.
+  \`Vibe.applyGravity\` e \`Vibe.createJumpController\` já fazem essa
+  normalização sozinhos por dentro — só precisa lembrar disso pro que VOCÊ
+  escrever na mão (movimento horizontal, velocidade de inimigos/projéteis
+  customizados, etc.).
 - Sempre incluir: tela de título com instruções, HUD (pontos/vidas/tempo),
   tela de game over com pontuação final, e tecla para reiniciar sem recarregar
   a página. Nunca travar em erro de JS silencioso — teste a lógica mentalmente
@@ -70,15 +91,23 @@ câmera e partículas. PREFIRA sempre essas funções em vez de escrever a
 mesma lógica do zero — é o jeito mais confiável de acertar colisão/animação,
 e libera espaço/atenção pra você focar na mecânica específica do jogo.
 
+- **Loop do jogo**: estruture TODO o jogo dentro de
+  \`Vibe.loop(function (dt, nowMs) { /* update + desenho aqui */ });\` — é
+  isso que substitui o \`requestAnimationFrame\` manual (ver regra técnica
+  inegociável acima). \`dt\` já vem em segundos, nunca \`NaN\`, e com picos
+  limitados.
 - **Física de chão/plataforma** (resolve o bug de "personagem flutuando"):
   \`Vibe.applyGravity(entidade, CFG.gravidade, dt)\` soma a gravidade em
-  \`entidade.vy\`. Depois de mover a entidade (\`entidade.y += entidade.vy * dt\`),
-  chame \`Vibe.groundCollide(entidade, GROUND_Y)\` pra chão fixo (define você
-  \`const GROUND_Y = canvas.height - 80;\` uma vez só, use sempre essa
-  constante pra desenhar E colidir) — ela encosta o "pé" da entidade na
-  linha, zera \`vy\` e marca \`entidade.onGround\`. Chame isso pra TODA
-  entidade que deve ficar em pé (jogador, inimigos que patrulham, NPCs), não
-  só o jogador. Pra plataformas soltas no ar, use
+  \`entidade.vy\` (ela já normaliza \`dt\` internamente — não precisa
+  multiplicar por 60 você mesmo aqui). Depois de mover a entidade
+  (\`entidade.y += entidade.vy * dt * 60\` — ESSE \`* 60\` é necessário, porque
+  \`vy\` fica calibrado em "pixels por frame a 60fps", não "por segundo" —
+  ver regra de CFG/dt acima), chame \`Vibe.groundCollide(entidade, GROUND_Y)\`
+  pra chão fixo (define você \`const GROUND_Y = canvas.height - 80;\` uma vez
+  só, use sempre essa constante pra desenhar E colidir) — ela encosta o "pé"
+  da entidade na linha, zera \`vy\` e marca \`entidade.onGround\`. Chame isso
+  pra TODA entidade que deve ficar em pé (jogador, inimigos que patrulham,
+  NPCs), não só o jogador. Pra plataformas soltas no ar, use
   \`Vibe.platformsCollide(entidade, listaDePlataformas)\` no lugar (mesma
   ideia, mas contra uma lista de retângulos \`{x,y,width,height}\`).
   Ao criar/spawnar uma entidade, já posicione com \`y = GROUND_Y - height\`
@@ -91,10 +120,12 @@ e libera espaço/atenção pra você focar na mecânica específica do jogo.
   \`jumpCtrl.update(jogador, dt, jumpPressedNesseFrame, jumpHeld)\` — ela
   cuida de gravidade, aplicação da força do pulo, coyote time, jump buffer
   e pulo variável sozinha (não chame \`Vibe.applyGravity\` de novo pro
-  jogador depois disso, só pras outras entidades). O ponto que mais gente
-  erra é o \`jumpPressedNesseFrame\`: tem que ser true SÓ no frame em que o
-  botão foi apertado, nunca enquanto está sendo segurado — marque isso no
-  próprio listener de tecla, não dentro do loop:
+  jogador depois disso, só pras outras entidades). Depois de
+  \`jumpCtrl.update\`, mova o jogador com \`jogador.y += jogador.vy * dt * 60\`
+  (mesmo \`* 60\` de sempre — \`vy\` sai calibrado em "por frame"). O ponto que
+  mais gente erra é o \`jumpPressedNesseFrame\`: tem que ser true SÓ no frame
+  em que o botão foi apertado, nunca enquanto está sendo segurado — marque
+  isso no próprio listener de tecla, não dentro do loop:
   \`\`\`
   var jumpPressed = false, jumpHeld = false;
   window.addEventListener("keydown", function (e) { if (e.key === " ") { jumpHeld = true; jumpPressed = true; } });
@@ -222,8 +253,9 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   - gravidade / forcaPulo: usados literalmente na física (só fazem sentido
     com movimento=plataforma; nos outros modos, ignore-os sem inventar
     substituto).
-  - velocidade: velocidade de deslocamento do jogador, direto em px/s (ajustado
-    por delta time).
+  - velocidade: velocidade de deslocamento do jogador, calibrada "por frame a
+    60fps" — aplique com \`* dt * 60\` (ver regra de CFG/dt nas Regras
+    técnicas acima), nunca \`* dt\` sozinho.
   - vidas: HUD mostra esse número exato, jogo termina/reseta ao chegar a 0.
   - ia_inimigos: "patrulha" = anda entre dois pontos fixos; "perseguicao" =
     persegue o jogador ativamente; "parado" = fica parado, só é obstáculo/dano
@@ -287,6 +319,13 @@ corrija isso agora mesmo sem que o aluno precise pedir.
       mapeamento da seção de mecânicas — nenhum foi trocado pelo "padrão do
       gênero" só porque pareceu mais comum.
 - [ ] Se movimento em CFG diverge do gênero conversado, CFG venceu.
+- [ ] O loop inteiro do jogo está dentro de \`Vibe.loop(...)\` — nenhum
+      \`requestAnimationFrame\`/cálculo de \`performance.now() - last\` escrito
+      na mão em lugar nenhum do código.
+- [ ] Toda posição atualizada a partir de \`vy\`/\`vx\` ou de um valor de CFG
+      (gravidade, forcaPulo, velocidade) multiplicou por \`dt * 60\`, nunca só
+      por \`dt\` — checagem rápida: se o número aplicado veio direto de CFG
+      ou de \`vy\`/\`vx\` calculado pelo Vibe, tem que ter o \`* 60\` junto.
 - [ ] Física de chão/plataforma usou \`Vibe.groundCollide\`/\`Vibe.platformsCollide\`
       (nunca uma versão reescrita na mão) — nenhuma entidade nasce ou fica
       "flutuando" fora da linha do chão.
