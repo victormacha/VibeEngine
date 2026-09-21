@@ -83,6 +83,27 @@ e libera espaço/atenção pra você focar na mecânica específica do jogo.
   ideia, mas contra uma lista de retângulos \`{x,y,width,height}\`).
   Ao criar/spawnar uma entidade, já posicione com \`y = GROUND_Y - height\`
   (nasce em pé), nunca com um \`y\` arbitrário tipo \`canvas.height / 2\`.
+- **Pulo de plataforma (SEMPRE que movimento = "plataforma")**: NUNCA
+  implemente pulo na mão (só \`vy = -forcaPulo\` na hora que aperta espaço) —
+  isso é o que sai com "pulo capenga" que os alunos reclamam. Use
+  \`Vibe.createJumpController({ jumpForce: CFG.forcaPulo, gravity: CFG.gravidade })\`
+  uma vez fora do loop, e todo frame chame
+  \`jumpCtrl.update(jogador, dt, jumpPressedNesseFrame, jumpHeld)\` — ela
+  cuida de gravidade, aplicação da força do pulo, coyote time, jump buffer
+  e pulo variável sozinha (não chame \`Vibe.applyGravity\` de novo pro
+  jogador depois disso, só pras outras entidades). O ponto que mais gente
+  erra é o \`jumpPressedNesseFrame\`: tem que ser true SÓ no frame em que o
+  botão foi apertado, nunca enquanto está sendo segurado — marque isso no
+  próprio listener de tecla, não dentro do loop:
+  \`\`\`
+  var jumpPressed = false, jumpHeld = false;
+  window.addEventListener("keydown", function (e) { if (e.key === " ") { jumpHeld = true; jumpPressed = true; } });
+  window.addEventListener("keyup", function (e) { if (e.key === " ") jumpHeld = false; });
+  // no loop, DEPOIS de chamar jumpCtrl.update(...) com o valor atual:
+  jumpPressed = false; // consome a flag — só vale por 1 frame
+  \`\`\`
+  Ainda use \`Vibe.groundCollide\`/\`Vibe.platformsCollide\` antes do
+  \`jumpCtrl.update\`, pra \`jogador.onGround\` estar correto naquele frame.
 - **Desenhar sprites de SPR, com animação certa pro momento certo**: em vez
   de escrever o próprio código de seleção de frame + escala + pintura pixel
   a pixel, chame
@@ -269,6 +290,10 @@ corrija isso agora mesmo sem que o aluno precise pedir.
 - [ ] Física de chão/plataforma usou \`Vibe.groundCollide\`/\`Vibe.platformsCollide\`
       (nunca uma versão reescrita na mão) — nenhuma entidade nasce ou fica
       "flutuando" fora da linha do chão.
+- [ ] Se movimento = "plataforma", o pulo do jogador usou
+      \`Vibe.createJumpController\` (nunca \`vy = -forcaPulo\` cru na mão), e
+      \`jumpPressed\` é uma flag de 1 frame só (setada no keydown, zerada
+      depois de consumida no loop) — nunca "true enquanto segurado".
 - [ ] Sprites de SPR foram desenhados com \`Vibe.drawSprite\`, não com um
       loop de pintura pixel a pixel escrito na mão.
 - [ ] Todo sprite novo foi inicializado com \`if (!SPR.nome) SPR.nome = { anims: { idle: {...}, ... } };\`
