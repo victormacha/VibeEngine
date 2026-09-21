@@ -287,6 +287,24 @@ values (
 )
 on conflict (version) do nothing;
 
+-- v3: rework da aba Personagens (pixel art/animação) — chega DEPOIS da v2
+-- acima, sem apagá-la; cada `insert ... on conflict do nothing` só
+-- adiciona a sua própria versão, então quem já viu a v2 continua vendo
+-- (e quem ainda não viu nenhuma vê as duas, na ordem, já que o modal
+-- sempre mostra a mais recente e marca como vista).
+insert into update_logs (version, title, content)
+values (
+  'v3',
+  '🎨 Rework do sistema de Pixel Art',
+  '- **Onion skin**: veja o frame anterior e o seguinte por baixo do frame atual pra animar sem precisar decorar a pose.
+- **Espelhar** o frame desenhado na horizontal ou na vertical com um clique.
+- **Refazer (redo)**: agora dá pra desfazer E refazer, não só desfazer.
+- **Ferramentas de linha e retângulo**, com prévia ao vivo antes de soltar o clique — contornos retos sem precisar ir pixel a pixel.
+- **Seleção**: marque uma área do desenho pra copiar, colar, recortar ou mover — inclusive entre frames diferentes.
+- **Atalhos de teclado**: B/E/G/I/L/R/S trocam de ferramenta, Ctrl+Z/Y desfaz/refaz, Ctrl+C/V/X copia/cola/recorta, Delete apaga a seleção, ← → troca de frame.'
+)
+on conflict (version) do nothing;
+
 -- Dica: para transformar um usuário em "banca" ou "admin" depois do
 -- cadastro, rode manualmente (uma vez, com o e-mail da pessoa):
 --   update profiles set role = 'banca' where email = 'avaliador@escola.com';
