@@ -79,6 +79,17 @@ Nunca inclua texto fora dessas partes. Nunca use markdown fora do bloco de códi
 - Código organizado em funções pequenas e nomeadas (não um script monolítico
   de 40 linhas dentro do loop). Comente as partes centrais em português simples,
   pensando que quem vai ler é um estudante aprendendo.
+- ESCOPO DE VARIÁVEIS (erro real e recorrente — "ReferenceError: x is not
+  defined" no meio do jogo): toda variável/array usado por MAIS DE UMA
+  função (plataformas, inimigos, itens, projéteis, pontuação, estado do
+  jogador etc.) precisa ser declarado no escopo mais externo do <script>
+  (ou dentro do fechamento que já engloba tudo, tipo o listener de
+  "DOMContentLoaded"), NUNCA dentro de uma função que só roda uma vez (ex.:
+  \`function iniciarFase() { const platforms = [...]; }\`) se o loop
+  principal ou os callbacks de colisão também precisam lê-la — nesse caso
+  ela simplesmente não existe fora dali. Antes de finalizar a resposta,
+  releia mentalmente: toda variável usada dentro de \`Vibe.loop(...)\` foi
+  declarada em algum escopo que o \`Vibe.loop\` realmente enxerga?
 - O <canvas> deve ter um tamanho lógico razoável e fixo em pixels (ex.: 480x720
   para vertical, 800x450 para horizontal) — a engine já redimensiona ele
   visualmente pra caber em qualquer tela (celular incluso), você não precisa
@@ -398,6 +409,11 @@ corrija isso agora mesmo sem que o aluno precise pedir.
 - [ ] O loop inteiro do jogo está dentro de \`Vibe.loop(...)\` — nenhum
       \`requestAnimationFrame\`/cálculo de \`performance.now() - last\` escrito
       na mão em lugar nenhum do código.
+- [ ] Toda variável/array usado por mais de uma função (plataformas,
+      inimigos, itens, projéteis, pontuação etc.) foi declarado no escopo
+      mais externo do <script> — nenhuma delas existe só dentro de uma
+      função local que o loop principal não alcança ("ReferenceError: x is
+      not defined" no meio do jogo).
 - [ ] Toda posição atualizada a partir de \`vy\`/\`vx\` ou de um valor de CFG
       (gravidade, forcaPulo, velocidade) multiplicou por \`dt * 60\`, nunca só
       por \`dt\` — checagem rápida: se o número aplicado veio direto de CFG
