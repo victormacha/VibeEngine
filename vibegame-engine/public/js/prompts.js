@@ -303,12 +303,22 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   sem pedir nada de novo à IA, o jogo já vai carregar as animações
   atualizadas, porque SPR é reinjetado a cada execução — só funciona se o
   desenho ler de SPR, nunca de uma cópia local.
-- Se CFG existir, os valores dele são REQUISITO, não sugestão nem "inspiração" —
-  aplique-os literalmente, mesmo que o resultado fuja do comportamento padrão
-  do gênero escolhido no chat. CFG sempre vence o gênero quando os dois
-  conflitarem: ex. se o gênero pedido foi "plataforma" mas CFG.movimento é
-  "topdown", faça um jogo de visão de cima (SEM gravidade nem pulo) — o campo
-  movimento manda, o rótulo do gênero é só um ponto de partida estético.
+- CFG só é REQUISITO travado quando a mensagem do aluno disser explicitamente
+  que ele configurou a aba Mecânicas de propósito pra esse jogo (isso vem
+  informado no início de cada mensagem — ver instrução ali). Nesse caso,
+  aplique cada campo literalmente, mesmo que fuja do gênero conversado: ex.
+  se o gênero pedido foi "plataforma" mas CFG.movimento é "topdown", faça um
+  jogo de visão de cima (SEM gravidade nem pulo) — o campo movimento manda.
+  QUANDO a mensagem disser que CFG ainda está nos valores padrão (aluno não
+  mexeu na aba), trate CFG como ponto de partida, não regra: adapte
+  "movimento" (e gravidade/forcaPulo, que só fazem sentido junto dele) pro
+  gênero que o aluno realmente pediu na conversa — nunca force plataforma
+  com gravidade/pulo num jogo de puzzle, topdown ou nave só porque é o
+  padrão de fábrica do formulário. Os outros campos (vidas, ia_inimigos,
+  condicaoVitoria, cenario, paralaxe, musica) fazem sentido pra praticamente
+  qualquer gênero, então pode aplicá-los mesmo sem customização — é
+  especificamente "movimento"/gravidade/forcaPulo que precisam condizer com
+  o gênero pedido antes de qualquer coisa.
   Mapeamento esperado por campo (não pule nenhum que estiver presente em CFG):
   - movimento: "plataforma" = gravidade + pulo + colisão com chão/plataformas;
     "topdown" = 4 direções livres, sem gravidade; "corredor" = scroll
@@ -378,10 +388,13 @@ corrija isso agora mesmo sem que o aluno precise pedir.
 ## Checklist final (confira mentalmente ANTES de escrever a resposta)
 - [ ] Toda chave presente em SPR foi lida em tempo de execução — nenhuma foi
       redesenhada, resumida ou ignorada.
-- [ ] Todo campo presente em CFG foi aplicado literalmente, seguindo o
-      mapeamento da seção de mecânicas — nenhum foi trocado pelo "padrão do
-      gênero" só porque pareceu mais comum.
-- [ ] Se movimento em CFG diverge do gênero conversado, CFG venceu.
+- [ ] Se a mensagem disse que CFG foi customizado pelo aluno: todo campo foi
+      aplicado literalmente, seguindo o mapeamento da seção de mecânicas —
+      nenhum foi trocado pelo "padrão do gênero" só porque pareceu mais comum,
+      e se movimento diverge do gênero conversado, CFG venceu.
+- [ ] Se a mensagem disse que CFG ainda está no padrão: movimento/gravidade/
+      forcaPulo condizem com o GÊNERO PEDIDO na conversa (não sobrou
+      gravidade/pulo de plataforma num jogo de puzzle, topdown ou nave).
 - [ ] O loop inteiro do jogo está dentro de \`Vibe.loop(...)\` — nenhum
       \`requestAnimationFrame\`/cálculo de \`performance.now() - last\` escrito
       na mão em lugar nenhum do código.
@@ -423,11 +436,16 @@ export const GENRE_TEMPLATES = {
   tiro: "Crie um jogo de tiro (shooter) estilo Asteroids/Galaga, com nave controlável e inimigos ou obstáculos vindos da tela.",
 };
 
-export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame, lore, hasBackground }) {
+export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame, lore, hasBackground, currentCode, mechanicsCustomized }) {
   const spriteEntries = Object.entries(sprites || {});
   const context = [
-    `Configuração atual da engine (CFG) — aplique cada campo literalmente, ` +
-      `não é sugestão: ${JSON.stringify(mechanics)}`,
+    mechanicsCustomized
+      ? `Configuração da engine (CFG) — o aluno CONFIGUROU a aba Mecânicas de propósito pra ` +
+        `esse jogo: aplique cada campo literalmente, não é sugestão: ${JSON.stringify(mechanics)}`
+      : `Configuração da engine (CFG) ainda está no PADRÃO de fábrica — o aluno não abriu a ` +
+        `aba Mecânicas pra esse jogo. Trate como ponto de partida, não regra travada: adapte ` +
+        `"movimento" (e gravidade/forcaPulo, que só valem junto dele) pro gênero que ele pedir ` +
+        `na conversa, sem forçar plataforma/gravidade num jogo que não é de plataforma. Valores: ${JSON.stringify(mechanics)}`,
     hasBackground
       ? "O aluno carregou um fundo de fase (BG) na aba Perfil — use-o como pano de fundo, conforme a seção Integração com a engine."
       : "Nenhum fundo de fase carregado (BG é null) — use o cenário de CFG.cenario normalmente.",
@@ -451,8 +469,11 @@ export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame, l
           })
           .join("; ")
       : "Nenhum sprite manual ainda — desenhe você mesmo com capricho, seguindo a técnica de pixel art.",
-    hasExistingGame
-      ? "Já existe um jogo em andamento nesta conversa — trate o pedido abaixo como uma alteração incremental sobre ele."
+    hasExistingGame && currentCode
+      ? `Código HTML ATUAL do jogo (já com todas as edições anteriores aplicadas) — edite ESTE ` +
+        `arquivo e devolva ele completo de novo com a alteração pedida. Ignore qualquer versão ` +
+        `de jogo mencionada mais cedo nesta conversa: já foi substituída por este código:\n` +
+        `\`\`\`html\n${currentCode}\n\`\`\``
       : "Este é o primeiro pedido — crie o jogo do zero.",
   ].join("\n");
 
