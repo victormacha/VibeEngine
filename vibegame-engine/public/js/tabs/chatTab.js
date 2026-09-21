@@ -1,4 +1,4 @@
-import { state, saveSprite, normalizeSprite } from "../state.js";
+import { state, saveSprite, normalizeSprite, mechanicsCustomized } from "../state.js";
 import { askAI, parseAIResponse } from "../api.js";
 import { toast } from "../ui.js";
 
@@ -69,6 +69,8 @@ export function mountChatTab(panel, { onGameUpdated }) {
         sprites: state.project.sprites,
         lore: state.project.lore.content,
         hasBackground: !!state.project.backgroundImage,
+        currentCode: state.project.gameCode || null,
+        mechanicsCustomized: mechanicsCustomized(state.project.mechanics),
         onStatus: (elapsedSeconds) => {
           thinking.textContent = `Gerando o jogo... (${elapsedSeconds}s — pode levar até 1-2 minutos pra jogos mais elaborados)`;
         },
