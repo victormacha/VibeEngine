@@ -176,8 +176,32 @@ e libera espaço/atenção pra você focar na mecânica específica do jogo.
   fora do loop; \`fx.emit(x, y, { color: "#ffcc00", count: 12 })\` no
   momento do impacto/coleta; a cada frame \`fx.update(dt); fx.draw(ctx);\`
   (depois do mundo, antes do HUD).
+- **Dano por contato (jogador x inimigo/perigo)**: SEMPRE use
+  \`Vibe.createCooldown(1)\` (1 segundo é um bom padrão) como invencibilidade
+  depois de tomar dano — sem isso, \`Vibe.rectsOverlap\` continua true frame
+  após frame enquanto os dois se tocam, e \`vidas--\` dispara 60x por
+  segundo, o que parece "vida sumindo instantaneamente"/game over ao
+  simplesmente encostar. Padrão certo:
+  \`\`\`
+  var hitCooldown = Vibe.createCooldown(1); // fora do loop
+  // dentro do loop, todo frame:
+  hitCooldown.update(dt);
+  if (Vibe.rectsOverlap(jogador, inimigo) && hitCooldown.ready()) {
+    vidas--;
+    hitCooldown.trigger();
+    jogador.x += jogador.x < inimigo.x ? -40 : 40; // empurra pro lado
+    jogador.vy = -4; // um pulinho de impacto, opcional
+  }
+  \`\`\`
+  NUNCA reposicione \`jogador.y\` pra \`GROUND_Y\` (ou qualquer posição fixa)
+  ao tomar dano — se o hit aconteceu numa plataforma no ar, isso teleporta
+  o jogador pro chão do nada, parece "colisão bugada". O knockback deve
+  mexer só em \`x\` (e opcionalmente um pequeno impulso em \`vy\` pra cima),
+  nunca forçar \`y\` pra um valor absoluto.
 - Utilidades soltas: \`Vibe.clamp(v, min, max)\`, \`Vibe.rectsOverlap(a, b)\`
-  (colisão AABB simples pra dano/coleta, fora do contexto de chão).
+  (colisão AABB simples pra dano/coleta, fora do contexto de chão),
+  \`Vibe.createCooldown(segundos)\` (qualquer "só pode acontecer de novo
+  depois de X segundos": dano, ataque, dash, etc.).
 
 Você ainda pode escrever física própria pra algo muito específico que o
 Vibe não cobre (ex. um dash com i-frames, um projétil com trajetória
@@ -348,6 +372,9 @@ corrija isso agora mesmo sem que o aluno precise pedir.
       \`Vibe.createJumpController\` (nunca \`vy = -forcaPulo\` cru na mão), e
       \`jumpPressed\` é uma flag de 1 frame só (setada no keydown, zerada
       depois de consumida no loop) — nunca "true enquanto segurado".
+- [ ] Dano por contato usou \`Vibe.createCooldown\` como invencibilidade
+      (nunca \`vidas--\` disparando livre a cada frame de overlap), e o
+      knockback nunca reposiciona \`y\` pra um valor fixo tipo GROUND_Y.
 - [ ] Sprites de SPR foram desenhados com \`Vibe.drawSprite\`, não com um
       loop de pintura pixel a pixel escrito na mão.
 - [ ] Todo sprite novo foi inicializado com \`if (!SPR.nome) SPR.nome = { anims: { idle: {...}, ... } };\`
