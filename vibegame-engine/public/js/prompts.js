@@ -112,6 +112,18 @@ e libera espaço/atenção pra você focar na mecânica específica do jogo.
   ideia, mas contra uma lista de retângulos \`{x,y,width,height}\`).
   Ao criar/spawnar uma entidade, já posicione com \`y = GROUND_Y - height\`
   (nasce em pé), nunca com um \`y\` arbitrário tipo \`canvas.height / 2\`.
+  Se o jogo tem chão fixo E plataformas soltas (comum), chame as duas TODO
+  frame, nessa ordem, com UM reset de \`onGround\` antes das duas — nunca
+  dentro do loop de cada uma nem entre elas:
+  \`\`\`
+  entidade.onGround = false; // reset único, antes de checar qualquer colisão
+  Vibe.groundCollide(entidade, GROUND_Y);
+  Vibe.platformsCollide(entidade, plataformas);
+  \`\`\`
+  As duas funções só ESCREVEM \`true\` quando realmente detectam um pouso —
+  nenhuma delas zera \`onGround\` sozinha, é sempre responsabilidade de quem
+  chama (a linha acima). Pular essa ordem é o motivo mais comum de "pulo
+  que funciona em cima de plataforma mas nunca no chão comum".
 - **Pulo de plataforma (SEMPRE que movimento = "plataforma")**: NUNCA
   implemente pulo na mão (só \`vy = -forcaPulo\` na hora que aperta espaço) —
   isso é o que sai com "pulo capenga" que os alunos reclamam. Use
@@ -329,6 +341,9 @@ corrija isso agora mesmo sem que o aluno precise pedir.
 - [ ] Física de chão/plataforma usou \`Vibe.groundCollide\`/\`Vibe.platformsCollide\`
       (nunca uma versão reescrita na mão) — nenhuma entidade nasce ou fica
       "flutuando" fora da linha do chão.
+- [ ] Se o jogo usa chão E plataformas juntos, \`entidade.onGround = false\`
+      aparece UMA vez só por frame, antes de chamar as duas funções de
+      colisão — nunca zerado de novo entre elas.
 - [ ] Se movimento = "plataforma", o pulo do jogador usou
       \`Vibe.createJumpController\` (nunca \`vy = -forcaPulo\` cru na mão), e
       \`jumpPressed\` é uma flag de 1 frame só (setada no keydown, zerada
