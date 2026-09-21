@@ -20,10 +20,40 @@ function sleep(ms) {
 // serve` rodando), cai automaticamente para uma chamada direta à Gemini
 // com uma chave só de teste (sessionStorage). Isso NUNCA acontece fora de
 // localhost.
-export async function askAI({ userText, chatHistory, mechanics, sprites, lore, hasBackground, onStatus }) {
+export async function askAI({ userText, chatHistory, mechanics, sprites, lore, hasBackground, currentCode, mechanicsCustomized, onStatus }) {
   const hasExistingGame = chatHistory.some((m) => m.role === "model");
-  const message = buildUserTurn(userText, { mechanics, sprites, hasExistingGame, lore, hasBackground });
-  return callAIRaw({ system: SYSTEM_PROMPT, history: chatHistory, message, onStatus });
+  const message = buildUserTurn(userText, {
+    mechanics, sprites, hasExistingGame, lore, hasBackground, currentCode, mechanicsCustomized,
+  });
+  // Enxuga o histórico ANTES de enviar (ver slimHistoryForApi) — o código
+  // completo do jogo atual já vai na mensagem acima, então repetir o HTML
+  // inteiro de cada resposta anterior no histórico é só custo de token à
+  // toa (e cresce a cada volta de conversa, sem limite).
+  return callAIRaw({ system: SYSTEM_PROMPT, history: slimHistoryForApi(chatHistory), message, onStatus });
+}
+
+// Numa conversa longa, cada resposta anterior do "model" contém um jogo
+// HTML inteiro (podem ser vários KB). Reenviar TODAS as versões anteriores
+// a cada nova mensagem é o maior gasto de token deste app — e é
+// desnecessário, porque buildUserTurn() já anexa o código ATUAL na
+// mensagem mais recente (ver "currentCode" acima). Aqui a gente troca cada
+// resposta antiga por um resumo de uma linha (extraído do GAME_INFO dela),
+// só pra IA saber que ali houve uma versão anterior, sem pagar o custo de
+// reler o HTML inteiro dela de novo. As mensagens do aluno (role "user")
+// são só o texto do pedido — já são curtas, não precisam de enxugamento.
+function slimHistoryForApi(chatHistory) {
+  return chatHistory.map((m) => {
+    if (m.role !== "model") return m;
+    const infoMatch = m.text.match(/<!--GAME_INFO([\s\S]*?)-->/i);
+    const summary = infoMatch
+      ? infoMatch[1].trim().replace(/\s*\n\s*/g, " · ")
+      : "jogo gerado, sem ficha técnica reconhecida";
+    return {
+      role: "model",
+      text: `[Essa resposta gerou um jogo completo em HTML — resumo da ficha técnica: ${summary}. ` +
+        `Essa versão JÁ FOI SUBSTITUÍDA; o código vigente vem anexado na mensagem mais recente do aluno.]`,
+    };
+  });
 }
 
 // Chamada de baixo nível pra IA, sem nenhum contrato de "responder um
