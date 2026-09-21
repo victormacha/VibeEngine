@@ -28,20 +28,38 @@ export function mountPixelEditorTab(panel) {
           <option value="48">48 × 48 (bosses/detalhado)</option>
         </select>
 
-        <label>Ferramenta</label>
+        <label>Ferramenta <span class="hint-inline">(atalhos: B/E/G/L/R/S)</span></label>
         <div class="tool-row">
-          <button class="tool-btn active" data-tool="brush" title="Pincel">🖌️</button>
-          <button class="tool-btn" data-tool="eraser" title="Borracha">🧽</button>
-          <button class="tool-btn" data-tool="bucket" title="Balde">🪣</button>
-          <button class="tool-btn" data-tool="eyedropper" title="Conta-gotas">💧</button>
+          <button class="tool-btn active" data-tool="brush" title="Pincel (B)">🖌️</button>
+          <button class="tool-btn" data-tool="eraser" title="Borracha (E)">🧽</button>
+          <button class="tool-btn" data-tool="bucket" title="Balde (G)">🪣</button>
+          <button class="tool-btn" data-tool="eyedropper" title="Conta-gotas (I)">💧</button>
+          <button class="tool-btn" data-tool="line" title="Linha (L)">📏</button>
+          <button class="tool-btn" data-tool="rect" title="Retângulo preenchido (R)">▭</button>
+          <button class="tool-btn" data-tool="select" title="Selecionar / mover (S)">🔲</button>
         </div>
 
         <label>Cor atual</label>
         <input type="color" id="color-picker" value="#ff5d73" />
         <div class="palette" id="palette"></div>
 
+        <label>Seleção <span class="hint-inline">(Ctrl+C/V/X)</span></label>
+        <div class="tool-row">
+          <button id="sel-copy" class="btn-ghost" title="Copiar seleção (Ctrl+C)">📋</button>
+          <button id="sel-paste" class="btn-ghost" title="Colar (Ctrl+V)">📌</button>
+          <button id="sel-cut" class="btn-ghost" title="Recortar (Ctrl+X)">✂️</button>
+          <button id="sel-clear" class="btn-ghost" title="Apagar seleção (Delete)">🗑️</button>
+        </div>
+
+        <label class="onion-toggle">
+          <input type="checkbox" id="onion-toggle" /> 🧅 Onion skin (ver frame anterior/seguinte)
+        </label>
+
         <div class="pixel-actions">
-          <button id="btn-undo" class="btn-ghost">↩️ Desfazer</button>
+          <button id="btn-undo" class="btn-ghost" title="Desfazer (Ctrl+Z)">↩️ Desfazer</button>
+          <button id="btn-redo" class="btn-ghost" title="Refazer (Ctrl+Y)">↪️ Refazer</button>
+          <button id="btn-flip-h" class="btn-ghost" title="Espelhar horizontal">↔️ Espelhar H</button>
+          <button id="btn-flip-v" class="btn-ghost" title="Espelhar vertical">↕️ Espelhar V</button>
           <button id="btn-clear" class="btn-ghost">🗑️ Limpar frame</button>
           <button id="btn-save-sprite" class="btn-primary">💾 Salvar sprite</button>
           <button id="btn-delete-sprite" class="btn-ghost btn-danger">🗑️ Apagar sprite</button>
@@ -51,6 +69,10 @@ export function mountPixelEditorTab(panel) {
           no jogo. Crie animações como <code>andar</code>, <code>atacar</code> ou
           <code>dash</code> dentro do mesmo sprite — a IA escolhe a animação certa pra
           cada momento do jogo, em vez de usar sempre a mesma pose.</p>
+        <p class="hint">Atalhos: B pincel, E borracha, G balde, I conta-gotas, L linha,
+          R retângulo, S seleção · Ctrl+Z desfazer, Ctrl+Y refazer, Ctrl+C/V/X
+          copiar/colar/recortar, Delete apaga seleção, ← → troca de frame.
+          (Só funcionam com o foco fora de campos de texto.)</p>
       </aside>
 
       <div class="pixel-main">
@@ -110,6 +132,7 @@ export function mountPixelEditorTab(panel) {
   const durationInput = panel.querySelector("#frame-duration");
   const playBtn = panel.querySelector("#frame-play");
   const previewCanvas = panel.querySelector("#frame-preview");
+  const onionToggle = panel.querySelector("#onion-toggle");
 
   // Estado do sprite em edição: um mapa de animações — cada uma com sua
   // lista de frames + velocidade própria — no mesmo formato de
@@ -125,6 +148,20 @@ export function mountPixelEditorTab(panel) {
   }
 
   editor.onColorPicked = (c) => (colorPicker.value = c);
+
+  // Onion skin: mostra o frame anterior (silhueta coral) e o seguinte
+  // (silhueta azul) por baixo do frame atual, pra facilitar desenhar uma
+  // pose em relação à anterior sem precisar decorar. Recalculado toda vez
+  // que o frame/animação muda (ver loadFrame) e ao ligar/desligar o toggle.
+  function updateOnionFrames() {
+    if (!onionToggle.checked) {
+      editor.setOnionSkin(false, null, null);
+      return;
+    }
+    const frames = curFrames();
+    editor.setOnionSkin(true, frames[currentFrame - 1] || null, frames[currentFrame + 1] || null);
+  }
+  onionToggle.addEventListener("change", updateOnionFrames);
 
   DEFAULT_PALETTE.forEach((c) => {
     const sw = document.createElement("button");
@@ -144,12 +181,13 @@ export function mountPixelEditorTab(panel) {
 
   colorPicker.addEventListener("input", () => (editor.color = colorPicker.value));
 
+  function setTool(name) {
+    editor.tool = name;
+    panel.querySelectorAll(".tool-btn").forEach((b) => b.classList.toggle("active", b.dataset.tool === name));
+  }
+
   panel.querySelectorAll(".tool-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      panel.querySelectorAll(".tool-btn").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      editor.tool = btn.dataset.tool;
-    });
+    btn.addEventListener("click", () => setTool(btn.dataset.tool));
   });
 
   // Guarda o que está no canvas de volta no frame atual antes de trocar de
@@ -163,6 +201,7 @@ export function mountPixelEditorTab(panel) {
     currentFrame = Math.max(0, Math.min(index, frames.length - 1));
     editor.loadPixels(frames[currentFrame]);
     renderFramesStrip();
+    updateOnionFrames();
   }
 
   function renderFramesStrip() {
@@ -255,9 +294,54 @@ export function mountPixelEditorTab(panel) {
     editor.setSize(newSize);
     fitCanvasToWrap();
     renderFramesStrip();
+    updateOnionFrames();
   });
   panel.querySelector("#btn-undo").addEventListener("click", () => editor.undo());
+  panel.querySelector("#btn-redo").addEventListener("click", () => editor.redo());
+  panel.querySelector("#btn-flip-h").addEventListener("click", () => editor.flipHorizontal());
+  panel.querySelector("#btn-flip-v").addEventListener("click", () => editor.flipVertical());
   panel.querySelector("#btn-clear").addEventListener("click", () => editor.clear());
+
+  panel.querySelector("#sel-copy").addEventListener("click", () => {
+    if (!editor.copySelection()) toast("Selecione uma área primeiro (ferramenta 🔲).", "error");
+    else toast("Copiado.", "success");
+  });
+  panel.querySelector("#sel-paste").addEventListener("click", () => {
+    if (!editor.pasteClipboard()) toast("Nada copiado ainda — use 📋 numa seleção primeiro.", "error");
+  });
+  panel.querySelector("#sel-cut").addEventListener("click", () => {
+    if (!editor.cutSelection()) toast("Selecione uma área primeiro (ferramenta 🔲).", "error");
+  });
+  panel.querySelector("#sel-clear").addEventListener("click", () => {
+    if (!editor.clearSelection()) toast("Selecione uma área primeiro (ferramenta 🔲).", "error");
+  });
+
+  // Atalhos de teclado — só reagem quando esta aba está visível e o foco
+  // não está num campo de texto (senão digitar "b" no nome do sprite ou na
+  // lore trocaria de ferramenta sem querer).
+  const KEY_TOOL_MAP = { b: "brush", e: "eraser", g: "bucket", i: "eyedropper", l: "line", r: "rect", s: "select" };
+  function isTypingTarget(el) {
+    if (!el) return false;
+    return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable;
+  }
+  window.addEventListener("keydown", (e) => {
+    if (!panel.classList.contains("active") || isTypingTarget(document.activeElement)) return;
+    const key = e.key.toLowerCase();
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (ctrl && key === "z") { e.preventDefault(); e.shiftKey ? editor.redo() : editor.undo(); return; }
+    if (ctrl && key === "y") { e.preventDefault(); editor.redo(); return; }
+    if (ctrl && key === "c") { e.preventDefault(); editor.copySelection(); return; }
+    if (ctrl && key === "v") { e.preventDefault(); editor.pasteClipboard(); return; }
+    if (ctrl && key === "x") { e.preventDefault(); editor.cutSelection(); return; }
+    if (!ctrl && (key === "delete" || key === "backspace") && editor.hasSelection()) {
+      e.preventDefault();
+      editor.clearSelection();
+      return;
+    }
+    if (!ctrl && key === "arrowleft") { e.preventDefault(); syncCurrentFrameFromEditor(); loadFrame(currentFrame - 1); return; }
+    if (!ctrl && key === "arrowright") { e.preventDefault(); syncCurrentFrameFromEditor(); loadFrame(currentFrame + 1); return; }
+    if (!ctrl && KEY_TOOL_MAP[key]) { e.preventDefault(); setTool(KEY_TOOL_MAP[key]); }
+  });
 
   function refreshAnimSelect() {
     const names = Object.keys(anims);
