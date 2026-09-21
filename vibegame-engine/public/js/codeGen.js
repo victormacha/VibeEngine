@@ -134,6 +134,16 @@ window.Vibe = (function () {
   // Chame TODO frame, pra TODA entidade que deve ficar em pé (jogador,
   // inimigos que patrulham, NPCs) — usar a mesma função pra todo mundo é o
   // que garante que ninguém fica flutuando ou afundado.
+  // NOTA IMPORTANTE DE COMPOSIÇÃO: nem groundCollide nem platformsCollide
+  // jamais zeram entity.onGround sozinhas — as duas só ESCREVEM true
+  // quando realmente detectam um pouso. Quem chama é responsável por
+  // resetar entity.onGround = false UMA VEZ por frame, antes de chamar
+  // qualquer uma delas (normalmente as duas, quando o jogo tem chão fixo
+  // E plataformas soltas). Se cada função resetasse onGround sozinha, a
+  // segunda chamada apagaria o resultado correto da primeira — foi
+  // exatamente esse bug que fazia pular no chão comum parar de funcionar
+  // depois de ~1 frame parado (platformsCollide desfazia o que
+  // groundCollide tinha acabado de marcar certo).
   function groundCollide(entity, groundY) {
     var bottom = entity.y + entity.height;
     if (bottom >= groundY && (entity.vy || 0) >= 0) {
@@ -142,7 +152,6 @@ window.Vibe = (function () {
       entity.onGround = true;
       return true;
     }
-    entity.onGround = false;
     return false;
   }
 
@@ -150,7 +159,6 @@ window.Vibe = (function () {
   // Só resolve pouso vindo de cima (a forma normal de plataforma em jogo de
   // pulo) — não empurra de lado nem por baixo, pra não "grudar" em beiradas.
   function platformsCollide(entity, platforms) {
-    entity.onGround = false;
     if (!(entity.vy > 0)) return false;
     var bottom = entity.y + entity.height;
     var prevBottom = bottom - entity.vy;
