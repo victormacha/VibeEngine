@@ -67,6 +67,8 @@ export function mountChatTab(panel, { onGameUpdated }) {
         chatHistory: state.project.chatHistory,
         mechanics: state.project.mechanics,
         sprites: state.project.sprites,
+        lore: state.project.lore.content,
+        hasBackground: !!state.project.backgroundImage,
         onStatus: (elapsedSeconds) => {
           thinking.textContent = `Gerando o jogo... (${elapsedSeconds}s — pode levar até 1-2 minutos pra jogos mais elaborados)`;
         },

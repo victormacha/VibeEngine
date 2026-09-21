@@ -474,4 +474,76 @@ button, input, select, textarea {
   .test-toolbar .actions button { flex: 1 1 auto; min-height: 38px; }
 
   .banca-score input, .banca-score textarea { font-size: 16px; }
+
+  .perfil-panel { grid-template-columns: 1fr; padding: 14px; }
+  .lore-panel { padding: 14px; }
+  .vibe-modal { width: 92vw; padding: 18px; }
 }
+
+/* ---------- Modal genérico (update log, dupla) ---------- */
+.vibe-modal-overlay {
+  position: fixed; inset: 0; z-index: 99999;
+  background: rgba(6, 7, 12, 0.72);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.vibe-modal {
+  position: relative;
+  width: 100%; max-width: 480px; max-height: 84vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 26px;
+}
+.vibe-modal h2 { margin: 0 0 10px; font-family: var(--font-display); font-size: 18px; color: var(--amber); }
+.vibe-modal p { line-height: 1.6; font-size: 13.5px; color: var(--text); }
+.vibe-modal ul { margin: 6px 0 14px; padding-left: 20px; line-height: 1.7; font-size: 13.5px; }
+.vibe-modal label { display: block; font-size: 12.5px; color: var(--text-dim); margin: 14px 0 6px; }
+.vibe-modal input[type="text"], .vibe-modal input[type="email"] {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px 12px; font-size: 14px;
+}
+.vibe-modal .btn-primary { width: 100%; margin-top: 18px; }
+.vibe-modal-close {
+  position: absolute; top: 10px; right: 12px; background: none; border: none;
+  color: var(--text-dim); font-size: 16px; cursor: pointer;
+}
+.vibe-modal-close:hover { color: var(--text); }
+.update-log-body strong { color: var(--teal); }
+
+/* ---------- Aba Lore ---------- */
+.lore-panel { padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 12px; }
+.lore-panel textarea {
+  flex: 1; min-height: 260px; resize: vertical; background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 8px; padding: 14px; font-size: 14px; line-height: 1.6;
+}
+.lore-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.lore-ai-badge {
+  background: rgba(255, 93, 115, 0.12); border: 1px solid var(--coral); color: var(--coral);
+  border-radius: 6px; padding: 8px 12px; font-size: 12.5px;
+}
+
+/* ---------- Aba Perfil ---------- */
+.perfil-panel {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+  padding: 20px; overflow-y: auto; flex: 1; align-content: start;
+}
+.perfil-card {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px;
+}
+.perfil-card h3 { margin: 0 0 10px; font-size: 14px; }
+.perfil-card label { display: block; font-size: 12px; color: var(--text-dim); margin: 10px 0 6px; }
+.perfil-card input[type="text"], .perfil-card input[type="email"] {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; font-size: 13.5px; width: 100%;
+}
+.perfil-row { display: flex; gap: 8px; align-items: center; }
+.perfil-row input { flex: 1; }
+.perfil-big { font-family: var(--font-display); font-size: 28px; color: var(--amber); margin: 4px 0; }
+.perfil-bg-preview { margin: 10px 0; }
+.perfil-bg-preview img { max-width: 100%; max-height: 140px; border-radius: 6px; border: 1px solid var(--border); }
+
+/* ---------- Avisos na aba Avaliação ---------- */
+.banca-lore-warning {
+  background: rgba(255, 93, 115, 0.12); border-bottom: 1px solid var(--coral); color: var(--coral);
+  padding: 10px 16px; font-size: 12.5px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.banca-team { font-size: 11.5px; color: var(--text-dim); margin-left: 10px; }

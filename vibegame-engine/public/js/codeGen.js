@@ -448,7 +448,7 @@ window.Vibe = (function () {
 })();
 </script>`;
 
-export function assembleFinalGame(aiHtml, { sprites, mechanics }) {
+export function assembleFinalGame(aiHtml, { sprites, mechanics, backgroundImage }) {
   // Passa o sprite quase como está — os dois formatos (novo, com `anims`
   // nomeadas, ou antigo, de uma animação só) são resolvidos em tempo de
   // execução por Vibe.drawSprite (ver resolveAnim no motor auxiliar acima).
@@ -461,6 +461,10 @@ export function assembleFinalGame(aiHtml, { sprites, mechanics }) {
     )
   );
   const mechanicsJson = JSON.stringify(mechanics);
+  // Fundo de fase carregado na aba Perfil (data URL ou null). A IA é
+  // instruída (prompts.js) a usar isso como pano de fundo do jogo quando
+  // presente, em vez de desenhar/inventar um cenário do zero.
+  const backgroundJson = JSON.stringify(backgroundImage || null);
 
   // Rede de segurança de responsividade: independente do que a IA definiu
   // no <canvas>, isso garante que ele encolhe pra caber na tela (mobile ou
@@ -473,6 +477,7 @@ export function assembleFinalGame(aiHtml, { sprites, mechanics }) {
   const injection = `<script>
     window.VIBE_SPRITES = ${spritesJson};
     window.VIBE_MECHANICS = ${mechanicsJson};
+    window.VIBE_BACKGROUND = ${backgroundJson};
 
     (function () {
       function showError(msg) {

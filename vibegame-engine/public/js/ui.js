@@ -10,6 +10,34 @@ export function toast(message, kind = "info") {
   }, 3200);
 }
 
+// Modal genérico, reaproveitado pelo update log (item 3) e pelo modal de
+// dupla (item 5). `dismissible: false` tira o botão de fechar e o clique
+// no fundo — usado quando a pessoa É OBRIGADA a preencher algo antes de
+// continuar (ex.: nome da dupla antes de enviar pra avaliação).
+export function openModal(innerHTML, { dismissible = true } = {}) {
+  const overlay = document.createElement("div");
+  overlay.className = "vibe-modal-overlay";
+  overlay.innerHTML = `
+    <div class="vibe-modal">
+      ${dismissible ? `<button class="vibe-modal-close" aria-label="Fechar">✕</button>` : ""}
+      <div class="vibe-modal-body">${innerHTML}</div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  function close() {
+    overlay.remove();
+  }
+
+  if (dismissible) {
+    overlay.querySelector(".vibe-modal-close").addEventListener("click", close);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close();
+    });
+  }
+
+  return { overlay, close };
+}
+
 export function mountTabs(root, tabs, { onSwitch } = {}) {
   const nav = document.createElement("div");
   nav.className = "tab-nav";

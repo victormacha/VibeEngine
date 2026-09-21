@@ -19,6 +19,21 @@ export const state = {
     gameCode: "",    // HTML/JS final retornado pela IA
     gameInfo: null,  // { titulo, genero, controles, objetivo }
 
+    backgroundImage: null, // data URL do fundo das fases (aba Perfil) — vira window.VIBE_BACKGROUND no jogo final
+
+    // Sistema de dupla: teamName é obrigatório antes de enviar pra avaliação;
+    // partnerId (uuid do colega) é o que dá acesso ao MESMO projeto pra ele,
+    // via política de RLS "auth.uid() = partner_id" em games. partnerEmail
+    // é só o que aparece na UI (o e-mail é resolvido pro id na hora de salvar).
+    teamName: "",
+    partnerId: null,
+    partnerEmail: "",
+
+    lore: {
+      content: "",
+      aiGenerated: false,
+    },
+
     sprites: {},     // nome -> { size, anims: { idle: {frameDuration, frames}, andar: {...}, ... } }
                       // (sprites salvos antes de existirem múltiplas animações têm o formato
                       // antigo { size, frameDuration, frames } — use normalizeSprite() pra ler
@@ -88,5 +103,16 @@ export function loadProjectFromRow(row) {
   state.project.chatHistory = Array.isArray(row.chat_history) ? row.chat_history : [];
   state.project.gameCode = row.game_code || "";
   state.project.sprites = row.sprites || {};
+  state.project.backgroundImage = row.background_image || null;
+  state.project.teamName = row.team_name || "";
+  state.project.partnerId = row.partner_id || null;
   Object.assign(state.project.mechanics, row.mechanics || {});
+}
+
+// Recarrega a lore (tabela separada `lore`, uma linha por jogo) de volta
+// pro estado — chamado depois de loadProjectFromRow, já que só existe
+// lore para um jogo que já tem `id`.
+export function loadLoreFromRow(row) {
+  state.project.lore.content = row?.content || "";
+  state.project.lore.aiGenerated = !!row?.ai_generated;
 }

@@ -247,6 +247,17 @@ escrever nada a mais. Por isso:
 No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   const SPR = window.VIBE_SPRITES || {};
   const CFG = window.VIBE_MECHANICS || {};
+  const BG = window.VIBE_BACKGROUND || null; // data URL (ou null) — fundo carregado na aba Perfil
+
+- Se \`BG\` não for null, é uma imagem (data URL) que o aluno escolheu como
+  fundo das fases na aba Perfil — desenhe-a cobrindo o <canvas> ANTES de
+  qualquer entidade, em toda fase/tela de jogo (não só na tela de menu).
+  Carregue com \`new Image()\` (\`img.src = BG\`) e só desenhe depois que
+  \`img.complete\` for true (ou dentro do \`onload\`) pra não arriscar desenhar
+  antes de carregar. Se CFG.paralaxe for true e BG existir, é aceitável (e
+  incentivado) desenhar BG em 1-2 camadas com velocidades diferentes pra dar
+  profundidade, mas nunca deixe de desenhá-la. Se \`BG\` for null, o cenário
+  visual continua vindo de CFG.cenario, normalmente.
 
 - Se \`SPR["jogador"]\` existir, é um sprite com uma ou mais animações
   nomeadas — os frames desenhados manualmente pelo aluno na aba Personagens,
@@ -412,11 +423,19 @@ export const GENRE_TEMPLATES = {
   tiro: "Crie um jogo de tiro (shooter) estilo Asteroids/Galaga, com nave controlável e inimigos ou obstáculos vindos da tela.",
 };
 
-export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame }) {
+export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame, lore, hasBackground }) {
   const spriteEntries = Object.entries(sprites || {});
   const context = [
     `Configuração atual da engine (CFG) — aplique cada campo literalmente, ` +
       `não é sugestão: ${JSON.stringify(mechanics)}`,
+    hasBackground
+      ? "O aluno carregou um fundo de fase (BG) na aba Perfil — use-o como pano de fundo, conforme a seção Integração com a engine."
+      : "Nenhum fundo de fase carregado (BG é null) — use o cenário de CFG.cenario normalmente.",
+    lore && lore.trim()
+      ? `Lore do jogo (contexto de história/personagens/inimigos — use pra dar nomes e ` +
+        `personalidade consistentes ao que você criar, mas não repita o texto literalmente ` +
+        `na tela): ${lore.trim().slice(0, 2000)}`
+      : "Sem lore definida ainda — invente nomes/tema simples e consistentes por conta própria.",
     spriteEntries.length
       ? `Sprites já desenhados manualmente pelo aluno (leia de SPR em tempo de ` +
         `execução, NÃO redesenhe nem hardcode o tamanho — use Vibe.drawSprite ` +

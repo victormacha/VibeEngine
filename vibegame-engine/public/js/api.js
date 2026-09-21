@@ -20,10 +20,19 @@ function sleep(ms) {
 // serve` rodando), cai automaticamente para uma chamada direta à Gemini
 // com uma chave só de teste (sessionStorage). Isso NUNCA acontece fora de
 // localhost.
-export async function askAI({ userText, chatHistory, mechanics, sprites, onStatus }) {
-  const session = await auth.ensureFreshSession();
+export async function askAI({ userText, chatHistory, mechanics, sprites, lore, hasBackground, onStatus }) {
   const hasExistingGame = chatHistory.some((m) => m.role === "model");
-  const message = buildUserTurn(userText, { mechanics, sprites, hasExistingGame });
+  const message = buildUserTurn(userText, { mechanics, sprites, hasExistingGame, lore, hasBackground });
+  return callAIRaw({ system: SYSTEM_PROMPT, history: chatHistory, message, onStatus });
+}
+
+// Chamada de baixo nível pra IA, sem nenhum contrato de "responder um
+// jogo em HTML" — usada tanto por askAI (que monta o `message` a partir
+// do pedido do aluno) quanto por qualquer outro uso que só precise de
+// texto livre de volta (ex.: geração simples de Lore, ver loreTab.js).
+// Mantém toda a lógica de proxy seguro / fallback local já existente.
+export async function callAIRaw({ system, history, message, onStatus }) {
+  const session = await auth.ensureFreshSession();
 
   // Só pra dar feedback de "ainda gerando..." pro usuário — não depende de
   // resposta nenhuma do servidor, é só o relógio local enquanto o fetch
@@ -39,7 +48,7 @@ export async function askAI({ userText, chatHistory, mechanics, sprites, onStatu
         "Content-Type": "application/json",
         Authorization: `Bearer ${session?.access_token || ""}`,
       },
-      body: JSON.stringify({ system: SYSTEM_PROMPT, history: chatHistory, message }),
+      body: JSON.stringify({ system, history, message }),
     });
 
     if (res.status === 404) functionMissing = true;
@@ -58,9 +67,27 @@ export async function askAI({ userText, chatHistory, mechanics, sprites, onStatu
   }
 
   if (functionMissing && isLocalHost()) {
-    return askGeminiDirect({ system: SYSTEM_PROMPT, history: chatHistory, message });
+    return askGeminiDirect({ system, history, message });
   }
   throw new Error("Não foi possível falar com a IA.");
+}
+
+// Prompt simples e direto pra gerar uma lore mínima quando o aluno deixa
+// a aba Lore em branco. De propósito curta ("simples", como pedido) — não
+// é pra competir com o que o aluno escreveria, é só um placeholder
+// honesto, e por isso mesmo o app marca `ai_generated = true` nesse caso
+// e avisa a banca (ver loreTab.js e tabs/bancaTab.js).
+export async function generateSimpleLore({ genre, mechanics }) {
+  const system =
+    "Você escreve lores CURTAS e SIMPLES (4 a 6 frases) para jogos escolares. " +
+    "Sem firulas, sem markdown, só texto corrido em português, cobrindo: onde a história " +
+    "se passa, quem é o protagonista, um antagonista/ameaça simples, e o objetivo geral.";
+  const message =
+    `Gênero do jogo: ${genre || "não definido"}. ` +
+    `Ambientação: ${mechanics?.cenario || "não definida"}. ` +
+    "Escreva uma lore simples pra esse jogo.";
+  const text = await callAIRaw({ system, history: [], message });
+  return text.trim();
 }
 
 // Só usado em localhost como atalho de teste — chama a Gemini direto do

@@ -2,6 +2,7 @@ import { state } from "../state.js";
 import { assembleFinalGame } from "../codeGen.js";
 import { dbQuery } from "../supabaseClient.js";
 import { toast } from "../ui.js";
+import { askTeamInfo, startTeamSync } from "../team.js";
 
 export function mountTestTab(panel) {
   panel.innerHTML = `
@@ -65,6 +66,7 @@ export function mountTestTab(panel) {
     const finalHtml = assembleFinalGame(state.project.gameCode, {
       sprites: state.project.sprites,
       mechanics: state.project.mechanics,
+      backgroundImage: state.project.backgroundImage,
     });
     renderInto(finalHtml);
   }
@@ -76,6 +78,7 @@ export function mountTestTab(panel) {
     const finalHtml = assembleFinalGame(state.project.gameCode, {
       sprites: state.project.sprites,
       mechanics: state.project.mechanics,
+      backgroundImage: state.project.backgroundImage,
     });
     const blob = new Blob([finalHtml], { type: "text/html" });
     window.open(URL.createObjectURL(blob), "_blank");
@@ -86,6 +89,7 @@ export function mountTestTab(panel) {
     const finalHtml = assembleFinalGame(state.project.gameCode, {
       sprites: state.project.sprites,
       mechanics: state.project.mechanics,
+      backgroundImage: state.project.backgroundImage,
     });
     const blob = new Blob([finalHtml], { type: "text/html" });
     const a = document.createElement("a");
@@ -104,11 +108,15 @@ export function mountTestTab(panel) {
       html_code: assembleFinalGame(state.project.gameCode, {
         sprites: state.project.sprites,
         mechanics: state.project.mechanics,
+        backgroundImage: state.project.backgroundImage,
       }),
       game_code: state.project.gameCode,
       chat_history: state.project.chatHistory,
       sprites: state.project.sprites,
       mechanics: state.project.mechanics,
+      background_image: state.project.backgroundImage,
+      team_name: state.project.teamName || null,
+      partner_id: state.project.partnerId || null,
       updated_at: new Date().toISOString(),
       ...extra,
     };
@@ -142,6 +150,7 @@ export function mountTestTab(panel) {
       }
       if (!silent) toast("Jogo salvo — continue quando quiser, ele te espera aqui.", "success");
       renderStatusBadge();
+      if (state.project.partnerId) startTeamSync({ onRemoteChange: render });
       return true;
     } catch (err) {
       if (!silent) toast(err.message, "error");
@@ -153,10 +162,22 @@ export function mountTestTab(panel) {
 
   submitBtn.addEventListener("click", async () => {
     if (!state.project.gameCode) return toast("Gere um jogo antes de enviar.", "error");
+
+    // Item 5: nome da dupla é obrigatório antes de qualquer envio. Se já
+    // foi preenchido antes (reenvio do mesmo projeto), não pergunta de
+    // novo — só na primeira vez que aquele projeto é enviado.
+    if (!state.project.teamName) {
+      const info = await askTeamInfo();
+      if (!info) return; // modal não é dispensável, então só chega aqui se confirmou
+      state.project.teamName = info.teamName;
+      state.project.partnerId = info.partnerId;
+      state.project.partnerEmail = info.partnerEmail;
+    }
+
     const already = state.project.status === "enviado";
     const msg = already
       ? "Esse jogo já foi enviado. Enviar de novo atualiza a versão que a banca vai ver — continuar?"
-      : "Enviar esse jogo pra avaliação da banca? Depois de enviado, quem avalia já pode ver e pontuar.";
+      : `Enviar o jogo da dupla "${state.project.teamName}" pra avaliação da banca? Depois de enviado, quem avalia já pode ver e pontuar.`;
     if (!confirm(msg)) return;
     submitBtn.disabled = true;
     try {
@@ -181,6 +202,8 @@ export function mountTestTab(panel) {
       submitBtn.disabled = false;
     }
   });
+
+  if (state.project.partnerId) startTeamSync({ onRemoteChange: render });
 
   render();
   return { render };

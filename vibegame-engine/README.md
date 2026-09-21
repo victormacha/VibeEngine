@@ -4,7 +4,34 @@ Estúdio web onde o aluno conversa com uma IA para criar jogos em HTML5/Canvas,
 mas também edita cada aspecto do jogo manualmente — sem depender só da IA.
 Feito para uma olimpíada de criação de jogos (projeto de extensão universitária).
 
-## O que mudou nesta reformulação
+## v2 — grande atualização
+
+- **Salvamentos corrigidos**: o `supabase/schema.sql` estava sem várias
+  colunas que o app já usava (`status`, `updated_at`, `submitted_at`,
+  `game_code`, `chat_history`) — isso fazia todo `INSERT`/`UPDATE` em
+  `games` falhar contra o Postgres, e por isso sprites/mecânicas/chat não
+  sobreviviam a um "Salvar" + recarregar. **Se seu projeto Supabase já
+  existe, cole o `schema.sql` inteiro de novo no SQL Editor** — todo
+  comando usa `if not exists`/`or replace`, então só cria o que falta, sem
+  apagar nada.
+- **Aba Perfil**: tempo de uso da engine, jogo atual, renomear o jogo e
+  carregar um fundo de fase (`window.VIBE_BACKGROUND`, que a IA agora usa
+  como pano de fundo do jogo). É também onde se vincula o colega de dupla.
+- **Aba Lore**: história do mundo/personagens/inimigos/bosses/NPCs, usada
+  como contexto pra IA. Pode ser gerada (simples) por IA sob pedido — nesse
+  caso fica marcada e a aba Avaliação avisa a banca que não foi o aluno
+  quem escreveu.
+- **Update log**: no primeiro login depois de uma atualização, aparece um
+  modal com o que mudou (tabela `update_logs`).
+- **Nota da banca**: de 0–10 para **0–4** por avaliador (`scores.nota`).
+- **Sistema de dupla**: nome da dupla obrigatório antes de enviar pra
+  avaliação; um colega pode ser vinculado pelo e-mail e passa a
+  compartilhar o mesmo projeto (sprites, mecânicas, chat, lore). Como o
+  cliente Supabase deste projeto é fetch puro (sem WebSocket/Realtime), a
+  sincronização entre os dois é por polling a cada ~4s — não é
+  instantâneo, mas os dois convergem pro mesmo estado sozinhos.
+
+## O que mudou na reformulação anterior
 
 - **Multi-abas**: IA (chat), Personagens (pixel art manual), Mecânicas (regras
   do jogo sem precisar de prompt), Testar (preview + download), e Avaliação
@@ -38,7 +65,7 @@ vibegame-engine/
 ├── functions/
 │   └── ai-chat.js        → proxy seguro pra IA (chave fica só aqui)
 ├── supabase/
-│   └── schema.sql         → tabelas + RLS (profiles, games, scores)
+│   └── schema.sql         → tabelas + RLS (profiles, games, scores, lore, perfil, update_logs)
 └── public/                 → tudo que o Netlify serve como site estático
     ├── index.html
     ├── css/style.css
@@ -49,15 +76,21 @@ vibegame-engine/
         ├── state.js           → estado do projeto atual
         ├── prompts.js         → system prompt + templates de gênero
         ├── api.js             → chama a Netlify Function
-        ├── codeGen.js         → injeta sprites/mecânicas no jogo final
-        ├── ui.js               → helpers (abas, toasts)
+        ├── codeGen.js         → injeta sprites/mecânicas/fundo no jogo final
+        ├── ui.js               → helpers (abas, toasts, modal genérico)
+        ├── team.js             → sistema de dupla (vincular colega + sync por polling)
+        ├── usageTracking.js    → tempo de uso da engine (aba Perfil)
+        ├── updateLog.js        → modal de novidades no primeiro login pós-atualização
         ├── pixelArt/canvasEngine.js  → motor do editor de pixel art
         └── tabs/
             ├── chatTab.js
             ├── pixelEditorTab.js
             ├── mechanicsTab.js
+            ├── loreTab.js
+            ├── perfilTab.js
             ├── testTab.js
-            └── bancaTab.js
+            ├── bancaTab.js
+            └── adminTab.js
 ```
 
 ## Como rodar localmente
