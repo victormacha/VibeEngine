@@ -174,22 +174,63 @@ window.Vibe = (function () {
   // Colisão com uma lista de plataformas soltas [{x,y,width,height}, ...].
   // Só resolve pouso vindo de cima (a forma normal de plataforma em jogo de
   // pulo) — não empurra de lado nem por baixo, pra não "grudar" em beiradas.
+  //
+  // COMO DETECTA O POUSO (importante — já foi fonte de um bug feio): pouso
+  // = o "pé" estava ACIMA (ou encostado no) topo da plataforma no frame
+  // anterior e agora está na altura dele ou abaixo. Pra isso precisamos
+  // saber onde o pé estava no frame anterior. NÃO dá pra deduzir isso de
+  // "bottom - vy": vy é calibrado em "pixels por frame a 60fps", mas o
+  // deslocamento real do frame é vy * dt * 60 — então, sempre que dt é
+  // maior que 1/60s (qualquer jitter de monitor 60Hz, 45fps, 30fps...), a
+  // conta subestimava o deslocamento, o pouso NÃO era detectado e o
+  // jogador atravessava a plataforma e caía no chão. Em vez de adivinhar,
+  // a gente guarda a posição do pé da última vez que esta função rodou
+  // (entity._vibePrevBottom) — é exatamente onde ele estava, com qualquer
+  // dt e independente de a colisão ser chamada antes ou depois de mover.
+  // Por isso: chame UMA vez por frame por entidade. Se reposicionar a
+  // entidade "na marra" (respawn/checkpoint), use Vibe.placeEntity.
+  var LAND_EPSILON = 1; // tolerância (px) pra erro de ponto flutuante no "encostado"
   function platformsCollide(entity, platforms) {
-    if (!(entity.vy > 0)) return false;
     var bottom = entity.y + entity.height;
-    var prevBottom = bottom - entity.vy;
-    for (var i = 0; i < platforms.length; i++) {
-      var p = platforms[i];
-      var withinX = entity.x + entity.width > p.x && entity.x < p.x + p.width;
-      if (!withinX) continue;
-      if (prevBottom <= p.y && bottom >= p.y) {
-        entity.y = p.y - entity.height;
-        entity.vy = 0;
-        entity.onGround = true;
-        return true;
+    var prevBottom = entity._vibePrevBottom;
+    // 1º frame (sem histórico): estima o quanto o pé pode ter andado. Vibe.loop
+    // limita dt a 0.05s = no máximo 3 "frames de 60fps" de deslocamento, então
+    // vy * 3 é o teto seguro. Estimar por baixo (vy * 1) reintroduz o bug de
+    // atravessar a plataforma; estimar pra cima demais snapparia entidades
+    // que nasceram embaixo da plataforma. vy * 3 cobre o caso sem esse risco.
+    if (prevBottom == null) prevBottom = bottom - Math.max(entity.vy || 0, 0) * 3;
+    var landed = false;
+    // vy >= 0 (e não > 0): parado em cima da plataforma (vy = 0) também
+    // precisa contar como "no chão", senão onGround pisca e o pulo falha.
+    if ((entity.vy || 0) >= 0) {
+      for (var i = 0; i < platforms.length; i++) {
+        var p = platforms[i];
+        var withinX = entity.x + entity.width > p.x && entity.x < p.x + p.width;
+        if (!withinX) continue;
+        if (prevBottom <= p.y + LAND_EPSILON && bottom >= p.y) {
+          entity.y = p.y - entity.height;
+          entity.vy = 0;
+          entity.onGround = true;
+          landed = true;
+          break;
+        }
       }
     }
-    return false;
+    entity._vibePrevBottom = entity.y + entity.height; // já com o pouso aplicado
+    return landed;
+  }
+
+  // Coloca uma entidade numa posição nova "de uma vez" (respawn, checkpoint,
+  // teleporte) sem deixar sobrar velocidade nem histórico de colisão do
+  // lugar antigo. Sem isso, o histórico da posição anterior poderia fazer
+  // a entidade "pousar" numa plataforma que ela só atravessou no teleporte.
+  function placeEntity(entity, x, y) {
+    entity.x = x;
+    entity.y = y;
+    entity.vx = 0;
+    entity.vy = 0;
+    entity.onGround = false;
+    entity._vibePrevBottom = null;
   }
 
   // Controlador de pulo "gostoso" de jogo de plataforma — os truques que
@@ -397,6 +438,7 @@ window.Vibe = (function () {
     applyGravity: applyGravity,
     groundCollide: groundCollide,
     platformsCollide: platformsCollide,
+    placeEntity: placeEntity,
     createJumpController: createJumpController,
     frameIndex: frameIndex,
     drawSprite: drawSprite,
