@@ -140,13 +140,24 @@ e libera espaço/atenção pra você focar na mecânica específica do jogo.
   isso no próprio listener de tecla, não dentro do loop:
   \`\`\`
   var jumpPressed = false, jumpHeld = false;
-  window.addEventListener("keydown", function (e) { if (e.key === " ") { jumpHeld = true; jumpPressed = true; } });
+  window.addEventListener("keydown", function (e) { if (e.key === " ") { jumpHeld = true; if (!e.repeat) jumpPressed = true; } }); // e.repeat: segurar a tecla não re-dispara o pulo
   window.addEventListener("keyup", function (e) { if (e.key === " ") jumpHeld = false; });
   // no loop, DEPOIS de chamar jumpCtrl.update(...) com o valor atual:
   jumpPressed = false; // consome a flag — só vale por 1 frame
   \`\`\`
-  Ainda use \`Vibe.groundCollide\`/\`Vibe.platformsCollide\` antes do
-  \`jumpCtrl.update\`, pra \`jogador.onGround\` estar correto naquele frame.
+  ORDEM CANÔNICA do jogador, todo frame (sempre essa, nunca misture com
+  colidir-antes-de-mover — é assim que o desenho nunca fica afundado na
+  plataforma e a colisão funciona em qualquer frame rate):
+  \`\`\`
+  jumpCtrl.update(jogador, dt, jumpPressed, jumpHeld); // gravidade + pulo
+  jogador.y += jogador.vy * dt * 60;                   // move
+  jogador.onGround = false;                            // reset único
+  Vibe.groundCollide(jogador, GROUND_Y);               // colide DEPOIS de mover
+  Vibe.platformsCollide(jogador, plataformas);         // (uma vez por frame!)
+  jumpPressed = false;
+  \`\`\`
+  (\`jumpCtrl.update\` lê o \`onGround\` que a colisão do frame anterior
+  deixou — é exatamente o que ele precisa pro coyote time.)
 - **Desenhar sprites de SPR, com animação certa pro momento certo**: em vez
   de escrever o próprio código de seleção de frame + escala + pintura pixel
   a pixel, chame
@@ -198,6 +209,11 @@ e libera espaço/atenção pra você focar na mecânica específica do jogo.
   o jogador pro chão do nada, parece "colisão bugada". O knockback deve
   mexer só em \`x\` (e opcionalmente um pequeno impulso em \`vy\` pra cima),
   nunca forçar \`y\` pra um valor absoluto.
+  Se o jogo PRECISAR reposicionar uma entidade de uma vez (início de fase,
+  checkpoint, respawn depois de cair no buraco), use
+  \`Vibe.placeEntity(entidade, x, y)\` — ela zera \`vx\`/\`vy\`/\`onGround\` e
+  o histórico de colisão. Atribuir \`entidade.x/y\` direto pode fazer a
+  entidade "pousar" de volta numa plataforma que só atravessou no teleporte.
 - Utilidades soltas: \`Vibe.clamp(v, min, max)\`, \`Vibe.rectsOverlap(a, b)\`
   (colisão AABB simples pra dano/coleta, fora do contexto de chão),
   \`Vibe.createCooldown(segundos)\` (qualquer "só pode acontecer de novo
@@ -368,6 +384,9 @@ corrija isso agora mesmo sem que o aluno precise pedir.
 - [ ] Se o jogo usa chão E plataformas juntos, \`entidade.onGround = false\`
       aparece UMA vez só por frame, antes de chamar as duas funções de
       colisão — nunca zerado de novo entre elas.
+- [ ] A colisão (\`groundCollide\`/\`platformsCollide\`) roda UMA vez por frame,
+      DEPOIS de mover a entidade (\`y += vy * dt * 60\`), e todo respawn/
+      teleporte usou \`Vibe.placeEntity\` em vez de atribuir x/y direto.
 - [ ] Se movimento = "plataforma", o pulo do jogador usou
       \`Vibe.createJumpController\` (nunca \`vy = -forcaPulo\` cru na mão), e
       \`jumpPressed\` é uma flag de 1 frame só (setada no keydown, zerada
