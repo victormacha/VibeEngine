@@ -99,9 +99,34 @@ window.Vibe = (function () {
            a.y < b.y + b.height && a.y + a.height > b.y;
   }
 
+  // ---------- Loop do jogo (controla o dt pra ninguém precisar calcular na mão) ----------
+  // Gerencia o requestAnimationFrame e calcula dt (segundos desde o
+  // frame anterior) de um jeito seguro: nunca NaN no primeiro frame, e
+  // limitado a no máximo 50ms mesmo se a aba ficar em segundo plano por um
+  // tempo (senão a física "explode" quando a aba volta ao foco, com um dt
+  // gigante de uma vez só). É o jeito recomendado de estruturar TODO o
+  // loop do jogo — ver documentação em prompts.js.
+  function loop(update) {
+    var last = null;
+    function frame(now) {
+      if (last == null) last = now;
+      var dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+      update(dt, now);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  }
+
   // ---------- Física ----------
+  // Os valores de CFG.gravidade/CFG.forcaPulo (config da aba Mecânicas) são
+  // calibrados como "quanto por frame a 60fps", não "por segundo" — por
+  // isso a gravidade aqui multiplica o dt por 60 antes de aplicar: assim o
+  // jogo sente igual independente do frame rate real da máquina, E os
+  // valores que o aluno ajusta na aba Mecânicas continuam batendo com a
+  // sensação que ele configurou lá, sem precisar reescalar nada na mão.
   function applyGravity(entity, gravity, dt) {
-    entity.vy = (entity.vy || 0) + gravity * dt;
+    entity.vy = (entity.vy || 0) + gravity * dt * 60;
   }
 
   // Colisão com uma linha de chão fixa (ex.: const GROUND_Y = canvas.height - 80).
@@ -189,7 +214,7 @@ window.Vibe = (function () {
         var g = this.gravity;
         if (entity.vy < 0 && !jumpHeld) g *= this.lowJumpMultiplier; // soltou cedo: corta o pulo
         else if (entity.vy > 0) g *= this.fallMultiplier; // caindo: acelera mais que a subida
-        entity.vy += g * dt;
+        entity.vy += g * dt * 60; // mesma normalização de applyGravity — CFG é calibrado por frame
       },
     };
   }
@@ -343,6 +368,7 @@ window.Vibe = (function () {
   return {
     clamp: clamp,
     rectsOverlap: rectsOverlap,
+    loop: loop,
     applyGravity: applyGravity,
     groundCollide: groundCollide,
     platformsCollide: platformsCollide,
