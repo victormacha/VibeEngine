@@ -143,6 +143,57 @@ window.Vibe = (function () {
     return false;
   }
 
+  // Controlador de pulo "gostoso" de jogo de plataforma — os truques que
+  // fazem a diferença entre um pulo capenga e um bom (tipo Mario/Celeste),
+  // prontos, pra não depender da IA acertar esses detalhes toda vez:
+  //   - coyote time: ainda dá pra pular por uma fração de segundo depois de
+  //     sair da borda, mesmo sem estar mais tecnicamente no chão (senão o
+  //     jogo pune por 1 frame de atraso, parece "travado").
+  //   - jump buffer: se apertar o pulo um pouco ANTES de aterrissar, o pulo
+  //     ainda acontece assim que tocar o chão, em vez de exigir timing
+  //     perfeito.
+  //   - pulo variável (jump cut): segurar o botão = pulo mais alto, soltar
+  //     cedo = pulo mais baixo — dá controle fino, sem isso todo pulo tem
+  //     sempre a mesma altura e fica com "peso" errado.
+  //   - gravidade assimétrica: cai mais rápido do que sobe, deixa o pulo
+  //     mais seco/responsivo em vez de flutuar no ar.
+  function createJumpController(opts) {
+    opts = opts || {};
+    return {
+      coyoteTime: opts.coyoteTime != null ? opts.coyoteTime : 0.12,
+      bufferTime: opts.bufferTime != null ? opts.bufferTime : 0.12,
+      jumpForce: opts.jumpForce || 12,
+      gravity: opts.gravity || 0.6,
+      fallMultiplier: opts.fallMultiplier != null ? opts.fallMultiplier : 1.6,
+      lowJumpMultiplier: opts.lowJumpMultiplier != null ? opts.lowJumpMultiplier : 2.2,
+      _coyote: 0,
+      _buffer: 0,
+      // Chame TODO frame, depois de já saber se entity.onGround está
+      // certo (rode DEPOIS de groundCollide/platformsCollide). jumpPressed
+      // deve ser true só no frame em que o botão foi apertado (não
+      // enquanto segurado — use uma flag setada no listener de keydown e
+      // consumida/zerada aqui). jumpHeld é true enquanto o botão continua
+      // pressionado (para o jump cut). Aplica a gravidade sozinho — não
+      // chame Vibe.applyGravity de novo pra essa entidade.
+      update: function (entity, dt, jumpPressed, jumpHeld) {
+        this._coyote = entity.onGround ? this.coyoteTime : Math.max(0, this._coyote - dt);
+        this._buffer = jumpPressed ? this.bufferTime : Math.max(0, this._buffer - dt);
+
+        if (this._buffer > 0 && this._coyote > 0) {
+          entity.vy = -this.jumpForce;
+          this._buffer = 0;
+          this._coyote = 0;
+          entity.onGround = false;
+        }
+
+        var g = this.gravity;
+        if (entity.vy < 0 && !jumpHeld) g *= this.lowJumpMultiplier; // soltou cedo: corta o pulo
+        else if (entity.vy > 0) g *= this.fallMultiplier; // caindo: acelera mais que a subida
+        entity.vy += g * dt;
+      },
+    };
+  }
+
   // ---------- Animação / desenho de sprite (lê o formato de VIBE_SPRITES) ----------
   var frameCanvasCache = new WeakMap(); // matriz do frame -> <canvas> já pintado, evita repintar pixel a pixel todo frame
 
@@ -295,6 +346,7 @@ window.Vibe = (function () {
     applyGravity: applyGravity,
     groundCollide: groundCollide,
     platformsCollide: platformsCollide,
+    createJumpController: createJumpController,
     frameIndex: frameIndex,
     drawSprite: drawSprite,
     createCamera: createCamera,
