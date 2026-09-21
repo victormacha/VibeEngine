@@ -1,5 +1,27 @@
 // Estado central do projeto de jogo atual. Cada aba lê/escreve aqui,
 // e o codeGen.js junta tudo na hora de montar o jogo final.
+
+// Valores de partida da aba Mecânicas — extraídos aqui (em vez de escritos
+// direto dentro de `state`) só pra dar pra COMPARAR depois: se o aluno
+// nunca abriu a aba Mecânicas, `state.project.mechanics` é exatamente
+// isso, e nesse caso não faz sentido a IA tratar esses valores como
+// obrigatórios (ver mechanicsCustomized() e prompts.js/buildUserTurn) —
+// um pedido de jogo de puzzle não devia ganhar gravidade/pulo só porque o
+// formulário "veio preenchido" com o padrão de plataforma.
+export const DEFAULT_MECHANICS = {
+  movimento: "plataforma",      // plataforma | topdown | corredor
+  gravidade: 0.6,
+  forcaPulo: 12,
+  velocidade: 4,
+  vidas: 3,
+  ia_inimigos: "patrulha",      // patrulha | perseguicao | parado
+  condicaoVitoria: "pontuacao", // pontuacao | sobreviver | chegar_ao_fim
+  pontuacaoAlvo: 100,
+  cenario: "dia",               // dia | noite | caverna | espaco
+  paralaxe: true,
+  musica: true,
+};
+
 export const state = {
   session: null,
   profile: null,
@@ -39,24 +61,21 @@ export const state = {
                       // antigo { size, frameDuration, frames } — use normalizeSprite() pra ler
                       // qualquer sprite de forma uniforme, os dois formatos convivem.)
 
-    mechanics: {
-      movimento: "plataforma",      // plataforma | topdown | corredor
-      gravidade: 0.6,
-      forcaPulo: 12,
-      velocidade: 4,
-      vidas: 3,
-      ia_inimigos: "patrulha",      // patrulha | perseguicao | parado
-      condicaoVitoria: "pontuacao", // pontuacao | sobreviver | chegar_ao_fim
-      pontuacaoAlvo: 100,
-      cenario: "dia",               // dia | noite | caverna | espaco
-      paralaxe: true,
-      musica: true,
-    },
+    mechanics: { ...DEFAULT_MECHANICS },
   },
 };
 
 export function updateMechanics(patch) {
   Object.assign(state.project.mechanics, patch);
+}
+
+// true só quando pelo menos um campo difere do padrão — ou seja, o aluno
+// efetivamente mexeu na aba Mecânicas pra esse jogo. Usado por
+// prompts.js/buildUserTurn pra decidir se CFG é regra travada (aluno
+// configurou de propósito) ou só um ponto de partida que a IA pode adaptar
+// ao gênero pedido (formulário ainda no padrão de fábrica).
+export function mechanicsCustomized(mechanics) {
+  return Object.keys(DEFAULT_MECHANICS).some((key) => mechanics[key] !== DEFAULT_MECHANICS[key]);
 }
 
 export function saveSprite(name, sprite) {
