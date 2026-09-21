@@ -118,6 +118,22 @@ window.Vibe = (function () {
     requestAnimationFrame(frame);
   }
 
+  // Cooldown genérico — o uso mais comum é invencibilidade (i-frames)
+  // depois de tomar dano, mas serve pra qualquer "isso só pode acontecer
+  // de novo depois de X segundos" (cooldown de ataque, de dash, etc.).
+  // Sem isso, colisão de dano continuada (jogador parado encostando no
+  // inimigo) dispara o dano em TODO frame — 60x por segundo — e a vida
+  // some quase instantaneamente, o que parece "colisão bugada".
+  function createCooldown(durationSeconds) {
+    return {
+      duration: durationSeconds,
+      _remaining: 0,
+      update: function (dt) { this._remaining = Math.max(0, this._remaining - dt); },
+      ready: function () { return this._remaining <= 0; },
+      trigger: function () { this._remaining = this.duration; },
+    };
+  }
+
   // ---------- Física ----------
   // Os valores de CFG.gravidade/CFG.forcaPulo (config da aba Mecânicas) são
   // calibrados como "quanto por frame a 60fps", não "por segundo" — por
@@ -377,6 +393,7 @@ window.Vibe = (function () {
     clamp: clamp,
     rectsOverlap: rectsOverlap,
     loop: loop,
+    createCooldown: createCooldown,
     applyGravity: applyGravity,
     groundCollide: groundCollide,
     platformsCollide: platformsCollide,
