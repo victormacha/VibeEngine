@@ -23,7 +23,10 @@ function elapsedSinceSegmentStart() {
 async function flush({ keepalive = false } = {}) {
   if (!userId) return;
   const delta = elapsedSinceSegmentStart();
-  segmentStartedAt = Date.now(); // reinicia a contagem já aqui, mesmo se o PATCH falhar
+  // Reinicia a contagem já aqui, mesmo se o PATCH falhar. Com a aba
+  // escondida a contagem fica PARADA (null): antes ela recomeçava aqui e o
+  // flush periódico de 30s somava o tempo em que o aluno nem estava na engine.
+  segmentStartedAt = document.hidden ? null : Date.now();
   if (delta <= 0) return;
   try {
     const [row] = await dbQuery("perfil", { select: "total_seconds", id: `eq.${userId}` });
@@ -55,7 +58,7 @@ function handleVisibility() {
 
 export function startUsageTracking(uid) {
   userId = uid;
-  segmentStartedAt = Date.now();
+  segmentStartedAt = document.hidden ? null : Date.now();
   flushTimer = setInterval(flush, FLUSH_MS);
   document.addEventListener("visibilitychange", handleVisibility);
   window.addEventListener("beforeunload", () => flush());
@@ -68,6 +71,12 @@ export async function stopUsageTracking({ flush: doFlush = false } = {}) {
   if (doFlush) await flush();
   userId = null;
   segmentStartedAt = null;
+}
+
+// A aba Perfil usa isto pra saber se o relógio está correndo agora
+// (aba visível + rastreamento ligado) e só então avançar o contador na tela.
+export function isTrackingActive() {
+  return !!userId && !!segmentStartedAt;
 }
 
 // Usado pela aba Perfil pra mostrar o total atualizado (soma o que já

@@ -287,20 +287,29 @@ window.Vibe = (function () {
   // ---------- Animação / desenho de sprite (lê o formato de VIBE_SPRITES) ----------
   var frameCanvasCache = new WeakMap(); // matriz do frame -> <canvas> já pintado, evita repintar pixel a pixel todo frame
 
-  function paintFrameToCanvas(frameMatrix) {
-    var cached = frameCanvasCache.get(frameMatrix);
+  // Um frame pode vir em dois formatos:
+  // - matriz de cores (desenhado na aba Personagens): [["#3b2f2f", null, ...], ...]
+  // - LEVE (desenhado pela IA, ~10x menos tokens): linhas de texto, uma letra
+  //   por pixel, com a paleta do sprite: ["..aabb..", ...] + paleta { a: "#3b2f2f" }.
+  //   "." ou espaço = transparente.
+  function paintFrameToCanvas(frame, palette) {
+    var cached = frameCanvasCache.get(frame);
     if (cached) return cached;
-    var n = frameMatrix.length;
+    var rows = frame.length;
+    var cols = 0;
+    for (var r = 0; r < rows; r++) cols = Math.max(cols, frame[r].length);
     var c = document.createElement("canvas");
-    c.width = n; c.height = n;
+    c.width = cols || 1; c.height = rows || 1;
     var cx = c.getContext("2d");
-    for (var y = 0; y < n; y++) {
-      for (var x = 0; x < n; x++) {
-        var color = frameMatrix[y][x];
+    for (var y = 0; y < rows; y++) {
+      var row = frame[y];
+      var isText = typeof row === "string";
+      for (var x = 0; x < row.length; x++) {
+        var color = isText ? (row[x] === "." || row[x] === " " ? null : (palette || {})[row[x]]) : row[x];
         if (color) { cx.fillStyle = color; cx.fillRect(x, y, 1, 1); }
       }
     }
-    frameCanvasCache.set(frameMatrix, c);
+    frameCanvasCache.set(frame, c);
     return c;
   }
 
@@ -344,7 +353,7 @@ window.Vibe = (function () {
     var anim = resolveAnim(sprite, animName);
     if (!anim || !anim.frames || !anim.frames.length) return;
     var idx = frameIndex(elapsedMs, anim.frameDuration, anim.frames.length);
-    var frameCanvas = paintFrameToCanvas(anim.frames[idx]);
+    var frameCanvas = paintFrameToCanvas(anim.frames[idx], sprite.paleta || sprite.palette);
     var prevSmoothing = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;
     ctx.save();

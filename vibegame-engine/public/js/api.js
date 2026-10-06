@@ -229,7 +229,9 @@ export function parseAIResponse(rawText) {
   if (spritesMatch) {
     try {
       const parsed = JSON.parse(spritesMatch[1].trim());
-      if (parsed && typeof parsed === "object") blockSprites = parsed;
+      if (parsed && typeof parsed === "object") {
+        blockSprites = Object.fromEntries(Object.entries(parsed).map(([k, v]) => [k, expandCompactSprite(v)]));
+      }
     } catch {
       // JSON malformado nesse bloco: ignora, ainda sobra o que veio do HTML.
     }
@@ -283,7 +285,7 @@ function extractEmbeddedSprites(html) {
         .replace(/'/g, '"')
         .replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":')
         .replace(/,(\s*[}\]])/g, "$1");
-      const parsed = JSON.parse(jsonish);
+      const parsed = expandCompactSprite(JSON.parse(jsonish));
       if (parsed && parsed.anims && typeof parsed.anims === "object") {
         // Formato novo: várias animações nomeadas (idle, andar, atacar, ...).
         // Só guarda as entradas que realmente parecem uma animação válida.
@@ -306,6 +308,38 @@ function extractEmbeddedSprites(html) {
     assignRe.lastIndex = i;
   }
   return sprites;
+}
+
+// A IA desenha sprites no formato LEVE (ver prompts.js): uma paleta
+// { a: "#3b2f2f", ... } + cada frame como linhas de texto ("..aabb..", uma
+// letra por pixel, "." = transparente) — ~10x menos tokens que a matriz de
+// cores. A aba Personagens (e o resto da engine) trabalha com a matriz, então
+// aqui convertemos de volta: o aluno recebe o sprite pronto pra editar à mão.
+// Sprites que já vêm como matriz passam sem mudança.
+export function expandCompactSprite(sprite) {
+  if (!sprite || typeof sprite !== "object") return sprite;
+  const palette = sprite.paleta || sprite.palette || {};
+  const expandFrame = (frame) => {
+    if (!Array.isArray(frame) || typeof frame[0] !== "string") return frame;
+    const width = Math.max(...frame.map((row) => row.length));
+    const size = Math.max(width, frame.length); // a aba Personagens usa grade quadrada
+    return Array.from({ length: size }, (_, y) =>
+      Array.from({ length: size }, (_, x) => {
+        const ch = (frame[y] || "")[x];
+        return ch && ch !== "." && ch !== " " ? palette[ch] || null : null;
+      })
+    );
+  };
+  const expandAnim = (anim) => (anim && Array.isArray(anim.frames) ? { ...anim, frames: anim.frames.map(expandFrame) } : anim);
+  const out = { ...sprite };
+  delete out.paleta;
+  delete out.palette;
+  if (sprite.anims && typeof sprite.anims === "object") {
+    out.anims = Object.fromEntries(Object.entries(sprite.anims).map(([n, a]) => [n, expandAnim(a)]));
+  } else if (Array.isArray(sprite.frames)) {
+    out.frames = sprite.frames.map(expandFrame);
+  }
+  return out;
 }
 
 function extractHtmlCode(rawText) {

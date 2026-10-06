@@ -21,11 +21,24 @@ export function mountBancaTab(panel) {
         listEl.innerHTML = `<p class="hint">Nenhum jogo enviado ainda.</p>`;
         return;
       }
+      // Nome + ano de quem fez (tela de identificação v4). Se a coluna ainda
+      // não existir no banco, a lista segue sem essa linha.
+      const alunos = {};
+      try {
+        const ids = [...new Set(games.flatMap((g) => [g.user_id, g.partner_id]).filter(Boolean))];
+        if (ids.length) {
+          const rows = await dbQuery("perfil", { select: "id,nome_aluno,ano", id: `in.(${ids.join(",")})` });
+          rows.forEach((r) => { if (r.nome_aluno) alunos[r.id] = `${r.nome_aluno}${r.ano ? ` (${r.ano}º ano)` : ""}`; });
+        }
+      } catch {
+        // sem identificação disponível
+      }
       listEl.innerHTML = "";
       games.forEach((g) => {
         const item = document.createElement("button");
         item.className = "banca-item";
-        item.innerHTML = `<strong>${g.title}</strong><span>${g.genre}</span>`;
+        const quem = [alunos[g.user_id], alunos[g.partner_id]].filter(Boolean).map(escapeHtml).join(" & ");
+        item.innerHTML = `<strong>${escapeHtml(g.title)}</strong><span>${escapeHtml(g.genre)}</span>${quem ? `<span class="banca-aluno">👤 ${quem}</span>` : ""}`;
         item.addEventListener("click", () => openGame(g));
         listEl.appendChild(item);
       });
@@ -90,4 +103,8 @@ export function mountBancaTab(panel) {
   }
 
   loadGames();
+}
+
+function escapeHtml(str) {
+  return String(str ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

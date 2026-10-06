@@ -12,6 +12,7 @@ import { mountLoreTab } from "./tabs/loreTab.js";
 import { mountPerfilTab } from "./tabs/perfilTab.js";
 import { startUsageTracking, stopUsageTracking } from "./usageTracking.js";
 import { maybeShowUpdateLog } from "./updateLog.js";
+import { ensureStudentIdentity } from "./identity.js";
 import { startTeamSync } from "./team.js";
 
 const root = document.getElementById("app");
@@ -57,11 +58,23 @@ async function startApp({ session, profile }) {
   if (profile?.role === "aluno" && session.user.id !== "dev-local") {
     await loadOwnLastProject(session.user.id);
   }
+  // O rastreamento de tempo começa ANTES de montar as abas: a aba Perfil
+  // precisa dele já ligado pra mostrar o contador.
+  if (session.user.id !== "dev-local") startUsageTracking(session.user.id);
   renderShell();
   if (session.user.id !== "dev-local") {
-    startUsageTracking(session.user.id);
+    // Aluno sem nome/ano cadastrados vê a tela de identificação primeiro
+    // (obrigatória); só depois o aviso de atualização.
+    if (profile?.role === "aluno") await ensureStudentIdentity();
+    renderUserBox();
     await maybeShowUpdateLog();
   }
+}
+
+// Mostra "Nome · 2º ano" no topo em vez do e-mail, quando já cadastrado.
+function renderUserBox() {
+  const el = root.querySelector("#user-name");
+  if (el && state.identity?.nome) el.textContent = `${state.identity.nome} · ${state.identity.ano}º ano`;
 }
 
 function renderShell() {
@@ -72,11 +85,12 @@ function renderShell() {
       <div class="brand">👾 <span>VibeGame Engine</span></div>
       <div class="user-box">
         <span class="role-badge role-${role}">${role}</span>
-        <span>${state.session.user.email}</span>
+        <span id="user-name" title="${state.session.user.email}">${state.session.user.email}</span>
         <button id="btn-logout" class="btn-ghost">Sair</button>
       </div>
     </header>
     <main id="tabs-root" class="tabs-root"></main>`;
+  renderUserBox(); // nome do aluno via textContent (nunca direto no HTML)
 
   root.querySelector("#btn-logout").addEventListener("click", async () => {
     await stopUsageTracking({ flush: true });

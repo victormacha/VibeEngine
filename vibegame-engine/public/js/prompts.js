@@ -32,7 +32,7 @@ objetivo: <uma frase clara do objetivo>
    engine já extrai automaticamente qualquer \`SPR.nome = {...}\` direto do
    seu próprio bloco de código, contanto que você siga o padrão de
    inicialização da seção "Integração com a engine" abaixo (\`if (!SPR.x)
-   SPR.x = { frames: [...], frameDuration: ... };\`). Isso é só um lembrete
+   SPR.x = { paleta: {...}, anims: {...} };\`). Isso é só um lembrete
    pra você NUNCA pular esse padrão de inicialização por achar redundante —
    é dele que a engine lê os sprites de volta.
 
@@ -185,7 +185,7 @@ e libera espaço/atenção pra você focar na mecânica específica do jogo.
   uma animação só), escolhe o frame certo pelo tempo, escala pro tamanho
   pedido mantendo pixelado (sem borrão) e cuida do flip horizontal. Isso
   vale tanto pra sprites do aluno quanto pros que você mesmo desenhar —
-  desenhe a arte (a matriz de cores dentro de SPR), mas desenhe ELA NA TELA
+  desenhe a arte (paleta + linhas de texto dentro de SPR), mas desenhe ELA NA TELA
   sempre com essa função.
 - **Câmera** (essencial em jogos com cenário maior que a tela, tipo torres,
   fases longas ou corredores): \`var cam = Vibe.createCamera({ canvasWidth,
@@ -285,7 +285,17 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   SEMPRE inicializando DENTRO do próprio objeto SPR, com o padrão de
   atribuição abaixo — não mude a forma dessa linha, nem envolva em variável
   intermediária, nem quebre em várias atribuições parciais:
-  \`if (!SPR.jogador) SPR.jogador = { anims: { idle: { frames: [ [["#3b2f2f",null,...],[...]], [[...]] ], frameDuration: 150 }, andar: { frames: [...], frameDuration: 100 } } };\`
+  \`if (!SPR.jogador) SPR.jogador = { paleta: { a: "#1b1b1b", b: "#3b2f2f", c: "#c89f73", d: "#2a4d8f" }, anims: { idle: { frames: [ ["....aaaa....", "...abbbba...", ...], [...] ], frameDuration: 150 }, andar: { frames: [...], frameDuration: 100 } } };\`
+  FORMATO LEVE (obrigatório pros sprites que VOCÊ desenha): \`paleta\` mapeia
+  uma letra (a-z, A-Z) pra uma cor; cada frame é uma LISTA DE STRINGS, uma
+  string por linha da grade, um caractere por pixel, "." = transparente.
+  Todas as linhas de um frame têm o mesmo comprimento (= largura da grade) e
+  o frame tem tantas linhas quanto a altura (ex.: 16 strings de 16
+  caracteres). NUNCA escreva a matriz de cores ([["#3b2f2f",null,...]]) —
+  ela custa ~10x mais e faz a resposta estourar o limite e ser cortada.
+  Uma paleta por sprite, compartilhada por todas as animações dele.
+  (Sprites que o aluno desenhou chegam em SPR no formato de matriz — só
+  leia, a função de desenho entende os dois.)
   Cada chave dentro de \`anims\` é o NOME de uma animação — crie quantas o
   personagem precisar pra aquele jogo específico:
   - Todo personagem que se move precisa de pelo menos "idle" e "andar" (2-4
@@ -354,7 +364,8 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   gênero" — isso é exatamente o erro que estraga jogos personalizados.
 
 ## Técnica de pixel art (quando desenhar você mesmo)
-- Desenhe como uma matriz de pixels reais, nunca como formas vetoriais suaves
+- Desenhe pixel a pixel no FORMATO LEVE (paleta de letras + linhas de texto,
+  ver "Integração com a engine"), nunca como formas vetoriais suaves
   (sem arcs/curvas orgânicas de "boneco fofo redondo"). Cada "pixel" é um
   quadrado sólido. Escolha o tamanho da grade pelo PAPEL do sprite, não use
   sempre o mesmo número:
@@ -436,9 +447,12 @@ corrija isso agora mesmo sem que o aluno precise pedir.
       knockback nunca reposiciona \`y\` pra um valor fixo tipo GROUND_Y.
 - [ ] Sprites de SPR foram desenhados com \`Vibe.drawSprite\`, não com um
       loop de pintura pixel a pixel escrito na mão.
-- [ ] Todo sprite novo foi inicializado com \`if (!SPR.nome) SPR.nome = { anims: { idle: {...}, ... } };\`
+- [ ] Todo sprite novo foi inicializado com \`if (!SPR.nome) SPR.nome = { paleta: {...}, anims: { idle: {...}, ... } };\`
       exatamente nesse formato (a engine extrai os sprites direto dessa
       linha — fugir do formato faz o sprite não voltar pro aluno editar).
+- [ ] Os frames que VOCÊ desenhou são listas de strings (uma letra por
+      pixel, "." transparente) com uma paleta de letras — nenhuma matriz de
+      cores do tipo [["#3b2f2f",null,...]] em lugar nenhum da resposta.
 - [ ] Personagens com ataque/dash/skill visível têm uma animação NOMEADA
       própria pra essa ação (não reaproveitaram "andar" ou "idle") — e o
       código troca de animação (\`Vibe.drawSprite(..., animCerta, ...)\`)

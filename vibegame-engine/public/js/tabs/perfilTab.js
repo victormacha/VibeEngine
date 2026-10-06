@@ -5,7 +5,7 @@
 import { state } from "../state.js";
 import { dbQuery } from "../supabaseClient.js";
 import { toast } from "../ui.js";
-import { getTotalSecondsForDisplay, formatSeconds } from "../usageTracking.js";
+import { getTotalSecondsForDisplay, formatSeconds, isTrackingActive } from "../usageTracking.js";
 import { findPartnerByEmail, startTeamSync } from "../team.js";
 
 export function mountPerfilTab(panel, { onProjectChanged } = {}) {
@@ -62,9 +62,30 @@ export function mountPerfilTab(panel, { onProjectChanged } = {}) {
   let pendingBackground = state.project.backgroundImage;
   renderBgPreview();
 
-  getTotalSecondsForDisplay().then((secs) => {
-    timeEl.textContent = formatSeconds(secs);
-  });
+  // Contador ao vivo. Antes ele era lido UMA vez, na montagem da aba — que
+  // acontece antes do rastreamento começar (main.js monta todas as abas
+  // juntas), então mostrava "0s" pra sempre. Agora: busca o total do banco a
+  // cada 30s e, entre uma busca e outra, avança 1s por segundo enquanto o
+  // relógio estiver correndo (aba visível).
+  let baseSecs = null;
+  let baseAt = 0;
+  async function refreshBase() {
+    baseSecs = await getTotalSecondsForDisplay();
+    baseAt = Date.now();
+    paintTime();
+  }
+  function paintTime() {
+    if (baseSecs === null) return;
+    const live = isTrackingActive() ? Math.floor((Date.now() - baseAt) / 1000) : 0;
+    timeEl.textContent = formatSeconds(baseSecs + live);
+  }
+  refreshBase();
+  const tickTimer = setInterval(() => {
+    if (!panel.isConnected) { clearInterval(tickTimer); clearInterval(baseTimer); return; } // aba recriada (renderShell)
+    paintTime();
+  }, 1000);
+  const baseTimer = setInterval(refreshBase, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && panel.isConnected) refreshBase(); });
 
   function renderBgPreview() {
     bgPreview.innerHTML = pendingBackground

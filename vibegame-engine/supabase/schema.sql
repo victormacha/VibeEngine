@@ -249,6 +249,13 @@ create policy "banca e admin leem o perfil de uso de qualquer aluno"
   on perfil for select
   using (public.has_role(array['banca', 'admin']));
 
+-- v4: identificação do aluno (tela obrigatória no primeiro login: nome + ano).
+-- Fica em `perfil` (que o próprio aluno já gerencia, ver política acima) e
+-- NÃO em `profiles`: lá só o admin edita — se o aluno pudesse editar a
+-- própria linha de `profiles`, poderia trocar o próprio cargo.
+alter table perfil add column if not exists nome_aluno text;
+alter table perfil add column if not exists ano text check (ano in ('2', '3'));
+
 -- 6. NOVO — Update log: o que muda em cada atualização da engine. Na
 -- PRIMEIRA vez que alguém entra depois de uma atualização (comparando com
 -- `perfil.last_seen_update_version`), o app mostra essa tabela num modal.
@@ -302,6 +309,18 @@ values (
 - **Ferramentas de linha e retângulo**, com prévia ao vivo antes de soltar o clique — contornos retos sem precisar ir pixel a pixel.
 - **Seleção**: marque uma área do desenho pra copiar, colar, recortar ou mover — inclusive entre frames diferentes.
 - **Atalhos de teclado**: B/E/G/I/L/R/S trocam de ferramenta, Ctrl+Z/Y desfaz/refaz, Ctrl+C/V/X copia/cola/recorta, Delete apaga a seleção, ← → troca de frame.'
+)
+on conflict (version) do nothing;
+
+-- v4: sprites mais leves (fim do erro de "limite de tokens"), identificação
+-- do aluno e contador de tempo consertado.
+insert into update_logs (version, title, content)
+values (
+  'v4',
+  '🛠️ Jogos maiores sem erro + quem é você',
+  '- **Fim do erro "a resposta da IA foi cortada"**: a IA agora desenha os personagens num formato **10x mais leve**, então dá pra pedir jogos com jogador animado, inimigos e boss sem estourar o limite.
+- **Identificação**: ao entrar, informe o **seu nome** e o **seu ano (2º ou 3º)** — é assim que a banca vai te reconhecer.
+- **Contador de tempo consertado**: a aba Perfil agora mostra o seu tempo de uso de verdade, contando ao vivo (e só enquanto a engine está aberta na tela).'
 )
 on conflict (version) do nothing;
 
