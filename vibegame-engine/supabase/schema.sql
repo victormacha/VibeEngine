@@ -137,9 +137,6 @@ create policy "banca e admin leem todos os jogos"
   on games for select
   using (public.has_role(array['banca', 'admin']));
 
--- v5: mapas em grade da aba Mapas ({ nome: { tile, legenda, linhas, origem } }).
-alter table games add column if not exists maps jsonb default '{}';
-
 -- 3. Notas: avaliação de um jogo por um membro da banca.
 --
 -- ATUALIZAÇÃO: cada membro da banca agora avalia de 0 A 4 (antes era
@@ -339,17 +336,13 @@ values (
 )
 on conflict (version) do nothing;
 
--- v6: mapas turbinados, mapas top-down/RPG e IA que ajuda a editar o mapa do aluno.
+-- v7: a aba Mapas saiu — a IA volta a montar as fases do jeito de antes.
 insert into update_logs (version, title, content)
 values (
-  'v6',
-  '🗺️ Mapas turbinados: top-down/RPG + IA que ajuda no seu mapa',
-  '- **Mapas vistos de cima** (RPG, aventura, tipo Undertale/Zelda): piso, paredes em 3D, água, árvores, pedras, flores, **NPCs** e **portas** que levam pra outros mapas. Escolha o estilo (plataforma ou top-down) ao criar o mapa.
-- **Visual novo**: grama no topo, bordas, sombras, tijolos e água animada — o editor mostra igual ao jogo.
-- **Tiles novos** no estilo plataforma: escada, mola, bloco quebrável e checkpoint.
-- **Ferramentas novas**: linha, conta-gotas, seleção com copiar/recortar/colar, pincel maior, zoom com Ctrl+roda e Espaço+arrastar pra mover a tela. Dá pra duplicar e renomear mapas e usar seus sprites como tile.
-- **✨ Gerar com IA**: descreva a fase e a IA monta o mapa pra você ajustar.
-- **A IA ajuda no SEU mapa**: o que você pinta vai pra IA, e dá pra pedir "coloca mais inimigos na vila" ou "aumenta a fase" — ela edita por cima do que você fez. Não gostou? Na aba Mapas tem **Desfazer mudança da IA**.'
+  'v7',
+  '🔙 Fases de volta ao jeito antigo',
+  '- **A aba Mapas foi retirada**: a IA volta a montar as fases e o cenário do jeito de antes, que estava dando jogos mais bonitos.
+- Continua tudo o resto: Lore salvando junto com o jogo, e a banca vendo as notas e comentários de todos os avaliadores.'
 )
 on conflict (version) do nothing;
 

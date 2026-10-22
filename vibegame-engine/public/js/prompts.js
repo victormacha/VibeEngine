@@ -259,7 +259,6 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   const SPR = window.VIBE_SPRITES || {};
   const CFG = window.VIBE_MECHANICS || {};
   const BG = window.VIBE_BACKGROUND || null; // data URL (ou null) — fundo carregado na aba Perfil
-  const MAPAS = window.VIBE_MAPS || {}; // mapas em grade (ver seção "Mapas em grade")
 
 - Se \`BG\` não for null, é uma imagem (data URL) que o aluno escolheu como
   fundo das fases na aba Perfil — desenhe-a cobrindo o <canvas> ANTES de
@@ -364,183 +363,6 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   Nunca substitua um valor presente em CFG por um "padrão mais comum pro
   gênero" — isso é exatamente o erro que estraga jogos personalizados.
 
-## Mapas em grade (MAPAS) — o cenário dos jogos com fases
-Jogos com fase/cenário fixo — plataforma, top-down, RPG (tipo Zelda,
-Pokémon, Undertale), labirinto, dungeon, puzzle em grade — guardam o
-LAYOUT (onde tem chão, parede, água, porta, onde nascem jogador, itens,
-inimigos e NPCs) num MAPA EM TEXTO. É esse mapa que o aluno abre na aba
-Mapas e edita pintando, e que você também edita quando ele pedir ajuda.
-(Corredor infinito e nave/tiro com tela que rola sozinha continuam gerando
-obstáculos por código — não force mapa onde não cabe.)
-
-O mapa é a fonte do LAYOUT e da COLISÃO — o VISUAL continua sendo seu:
-capriche no cenário como sempre (fundo com paralaxe, céu, iluminação,
-decoração extra, partículas de ambiente, cores no tema da lore e de
-CFG.cenario). \`mundo.draw\` já desenha os tiles com grama, borda, sombra,
-paredes em perspectiva, água animada etc.; escolha \`cor\`/\`topo\` da
-legenda na paleta do jogo, e se quiser tiles mais bonitos desenhe sprites
-de tile (ex.: \`SPR.tile_pedra\`, 16x16, formato leve) e ligue na legenda com
-\`sprite: "tile_pedra"\`. Pode desenhar coisas por cima/por baixo do mapa
-(ex.: tochas nas paredes, sombras, neblina) usando \`mundo.tipoAt(col,row)\`.
-
-No topo do <script>, junto de SPR/CFG/BG:
-  const MAPAS = window.VIBE_MAPS || {};
-Cada mapa é inicializado com o MESMO padrão dos sprites — não mude a forma
-dessa linha (a engine extrai o mapa de volta pra aba Mapas direto dela).
-
-### Estilo "plataforma" (vista de lado, com gravidade)
-\`\`\`
-if (!MAPAS.fase1) MAPAS.fase1 = {
-  estilo: "plataforma",
-  tile: 32,
-  legenda: {
-    "#": { tipo: "solido", cor: "#6b4a2f", topo: "#4caf50" },
-    "=": { tipo: "plataforma", cor: "#9c6b3c" },
-    "B": { tipo: "quebravel", cor: "#b5651d" },
-    "M": { tipo: "mola", cor: "#ff7043" },
-    "H": { tipo: "escada", cor: "#c8a165" },
-    "^": { tipo: "perigo", cor: "#e04848" },
-    "o": { tipo: "item", cor: "#ffd23f", nome: "moeda" },
-    "E": { tipo: "inimigo", cor: "#c0392b", nome: "slime" },
-    "C": { tipo: "checkpoint", cor: "#29b6f6" },
-    "P": { tipo: "jogador", cor: "#3fa7ff" },
-    "F": { tipo: "saida", cor: "#2ecc71" }
-  },
-  linhas: [
-    "............................................................",
-    "..........................ooo...............................",
-    "....................H....=====.........BBB..........o.o.....",
-    "............o.o.....H...................................F...",
-    "...........=====....H.............E.........M.....######....",
-    "..P...............######.....C.........###......########....",
-    "########.....###########..#######...########^^^##########...",
-    "########^^^^###########################################....#"
-  ]
-};
-\`\`\`
-Design de fase de plataforma: uma sequência de TRECHOS com ritmo (começo
-plano e seguro → primeiro pulo fácil → itens em arco sobre os pulos →
-primeiro inimigo com espaço pra reagir → plataformas suspensas → um trecho
-vertical com mola ou escada → checkpoint no meio → trecho mais difícil →
-saída). Chão com 2-3 linhas de espessura e DEGRAUS (nunca uma reta chata a
-fase toda), buracos de 2-3 tiles, plataformas de 3-6 tiles a 2-3 acima do
-que está embaixo; todo pulo necessário com no máximo 3 de altura e 4 de
-distância. 60-120 colunas x 12-18 linhas.
-
-### Estilo "topdown" (vista de cima: RPG, aventura, labirinto, dungeon)
-\`\`\`
-if (!MAPAS.vila) MAPAS.vila = {
-  estilo: "topdown",
-  tile: 32,
-  legenda: {
-    "_": { tipo: "piso", cor: "#6aa84f", nome: "grama" },
-    ":": { tipo: "piso", cor: "#c2a26b", nome: "caminho" },
-    "#": { tipo: "solido", cor: "#8d6e63", nome: "parede" },
-    "T": { tipo: "solido", cor: "#2e7d32", nome: "arvore", forma: "arvore" },
-    "~": { tipo: "agua", cor: "#3d7cc9" },
-    "*": { tipo: "decoracao", cor: "#f06292", nome: "flores", forma: "flor" },
-    "D": { tipo: "porta", cor: "#8d5a2b", destino: "casa" },
-    "N": { tipo: "npc", cor: "#ab47bc", nome: "vovo" },
-    "o": { tipo: "item", cor: "#ffd23f", nome: "moeda" },
-    "E": { tipo: "inimigo", cor: "#c0392b", nome: "slime" },
-    "P": { tipo: "jogador", cor: "#3fa7ff" }
-  },
-  linhas: [
-    "TTTTTTTTTTTTTTTTTTTTTTTTT",
-    "T___*____#####_______o__T",
-    "T________#####__________T",
-    "T__N_____##D##____~~~___T",
-    "T:::::::::::::::::~~~___T",
-    "T__P_____:_______~~~~~__T",
-    "T___*____:___E____~~~___T",
-    "TTTTTTTTTT:TTTTTTTTTTTTTT"
-  ]
-};
-\`\`\`
-- No top-down TODA célula andável é piso ("." = fora do mapa, nunca use
-  dentro da área jogável); a borda é fechada (fora do mapa também bloqueia).
-  \`agua\` bloqueia a passagem; \`forma\` (arvore, pedra, arbusto, caixa, flor)
-  muda o desenho do tile — árvore/pedra/caixa com tipo solido, flor/arbusto
-  baixo com tipo decoracao.
-- Design: áreas com identidade (praça, casas com porta, lago, bosque,
-  corredor de dungeon, sala do chefe) ligadas por caminhos de 2-3 tiles;
-  obstáculos agrupados de forma natural, não espalhados aleatórios; NPCs em
-  lugares que fazem sentido; itens recompensando explorar cantos.
-- Movimento: sem gravidade — \`Vibe.moveAndCollide(jogador, vx*dt*60, vy*dt*60, mundo)\`
-  com vx/vy das setas (4 direções). Ordene o desenho das entidades por \`y\`
-  (quem está mais embaixo na tela desenha por último) pra ficar natural.
-- NPCs (estilo Undertale): \`mundo.npcs\` (células com \`.nome\`). Com
-  \`var npc = mundo.nearest(jogador, mundo.npcs, 40)\`, mostre "Espaço: falar"
-  e, ao apertar, abra uma CAIXA DE DIÁLOGO embaixo da tela (texto letra por
-  letra, Espaço avança; jogador parado enquanto fala). Falas de cada NPC num
-  objeto \`FALAS[npc.nome]\`, coerentes com a lore.
-- Portas: \`mundo.portas\` (cada uma com \`.destino\` = nome de outro mapa). Ao
-  encostar, troque de mapa com fade: \`mundo = Vibe.loadMap(MAPAS[porta.destino])\`
-  e posicione o jogador no "P" do novo mapa (ou perto da porta de volta).
-  Crie os mapas de destino também (ex.: interior da casa).
-
-### Regras dos dois estilos
-- Tipos: solido, plataforma, quebravel, mola (\`forca\`, padrão 18), escada,
-  perigo, item, inimigo, jogador, checkpoint, saida, decoracao, piso, agua,
-  npc, porta (\`destino\`). Um "P" por mapa. Todas as linhas com o MESMO
-  comprimento — conte os caracteres.
-- Caracteres da legenda: letras, números ou um destes: # = ^ ~ * + - | / ! ?
-  @ $ % & < > _ : ; (nunca aspas, vírgula, chaves ou barra invertida).
-- Várias fases/áreas = vários mapas (MAPAS.fase1, MAPAS.fase2, MAPAS.casa...).
-
-Usando o mapa no jogo (window.Vibe já tem tudo pronto):
-\`\`\`
-var mundo = Vibe.loadMap(MAPAS.fase1); // de novo ao reiniciar/trocar de mapa
-// mundo.width/height (px), mundo.tile, mundo.estilo, mundo.jogador (célula),
-// listas de células {x,y,width,height,col,row,tipo,nome,char,destino}:
-// mundo.itens, inimigos, npcs, portas, perigos, saidas, checkpoints, escadas,
-// molas, quebraveis, aguas
-Vibe.placeOnTile(jogador, mundo.jogador);
-var cam = Vibe.createCamera({ canvasWidth: canvas.width, canvasHeight: canvas.height, worldWidth: mundo.width, worldHeight: mundo.height });
-// no loop — plataforma:
-jumpCtrl.update(jogador, dt, jumpPressed, jumpHeld);
-Vibe.moveAndCollide(jogador, jogador.vx * dt * 60, jogador.vy * dt * 60, mundo);
-// no loop — top-down: só a linha do moveAndCollide, com vx/vy das setas
-// desenho:
-cam.apply(ctx); mundo.draw(ctx, nowMs, cam); /* itens, NPCs, inimigos, jogador */ cam.restore(ctx);
-\`\`\`
-- \`Vibe.moveAndCollide(entidade, dx, dy, mundo)\` move E colide (paredes,
-  chão, teto, plataformas de mão única, molas, água no top-down) e atualiza
-  \`onGround\`, \`hitWall\`, \`hitCeiling\`, \`groundTile\`/\`headTile\` (célula
-  onde pisou / bateu a cabeça, com \`.tipo\`, \`.col\`, \`.row\`) e \`bounced\`
-  (pisou numa mola — impulso já aplicado; toque um som). Com mapa, é a
-  ÚNICA colisão de cenário — NÃO use groundCollide/platformsCollide/GROUND_Y
-  junto. Use pra inimigos também (\`hitWall\` = virar na patrulha; pra não
-  cair de beirada: \`!mundo.isSolid(colunaÀFrente, linhaAbaixoDoPé)\`).
-- Quebrável: \`if (jogador.headTile && jogador.headTile.tipo === "quebravel")
-  mundo.breakTile(jogador.headTile.col, jogador.headTile.row);\` (cabeçada,
-  com partículas) ou ao atacar. \`mundo.setTile(col, row, char)\` troca
-  qualquer célula em tempo de jogo (abrir passagem, porta destrancada...).
-- Escada: \`if (mundo.onLadder(jogador) && (cima || baixo)) { jogador.vy =
-  (baixo ? 1 : -1) * 3; subindo = true; }\` — enquanto \`subindo\` e na
-  escada, NÃO chame jumpCtrl.update; ao sair da escada ou pular, \`subindo = false\`.
-- Checkpoint: ao encostar numa célula de \`mundo.checkpoints\`, guarde ela;
-  ao morrer, \`Vibe.placeOnTile(jogador, checkpointAtual || mundo.jogador)\`.
-- Itens/inimigos/NPCs: crie as entidades a partir das listas (ex.:
-  \`mundo.inimigos.map(function (c) { var e = {...}; Vibe.placeOnTile(e, c); return e; })\`)
-  — o mapa marca ONDE nascem; quem desenha e anima é o seu código.
-- Perigos: \`mundo.perigos.some(function (p) { return Vibe.rectsOverlap(jogador, p); })\`
-  (com o cooldown de dano). Saída: overlap com \`mundo.saidas\` = venceu.
-- Plataforma: caiu abaixo de \`mundo.height\` = caiu no buraco.
-
-### Editar mapas que já existem (o aluno pinta, você ajuda)
-O código atual que vem na mensagem JÁ TEM cada mapa com as edições que o
-aluno fez na aba Mapas. Ele e você editam o MESMO mapa:
-- Se o pedido NÃO é sobre o mapa, copie cada \`MAPAS.x = {...}\` EXATAMENTE
-  como está (não "melhore" nem reorganize o que o aluno pintou).
-- Se o pedido É sobre o mapa ("mais inimigos na fase1", "aumenta a vila",
-  "coloca um lago", "a fase tá fácil"), edite as linhas desse mapa
-  preservando o que o aluno construiu e mudando só o necessário.
-- Mapas que aparecem listados na mensagem como "só na aba Mapas" foram
-  criados pelo aluno e ainda não estão no código: escreva-os no código
-  (com o padrão if (!MAPAS.x)) copiando exatamente, e use-os se o pedido
-  tiver a ver com eles. Nunca leia o mapa de outra variável que não MAPAS.
-
 ## Técnica de pixel art (quando desenhar você mesmo)
 - Desenhe pixel a pixel no FORMATO LEVE (paleta de letras + linhas de texto,
   ver "Integração com a engine"), nunca como formas vetoriais suaves
@@ -628,14 +450,6 @@ corrija isso agora mesmo sem que o aluno precise pedir.
 - [ ] Todo sprite novo foi inicializado com \`if (!SPR.nome) SPR.nome = { paleta: {...}, anims: { idle: {...}, ... } };\`
       exatamente nesse formato (a engine extrai os sprites direto dessa
       linha — fugir do formato faz o sprite não voltar pro aluno editar).
-- [ ] Se o jogo tem fase/cenário fixo: o layout veio de um mapa em
-      \`MAPAS.x\` (padrão \`if (!MAPAS.x) MAPAS.x = {...}\`) com o \`estilo\`
-      certo pro gênero (plataforma = de lado; topdown = RPG/aventura de cima),
-      carregado com \`Vibe.loadMap\` e colidido com \`Vibe.moveAndCollide\`.
-- [ ] Mapas que já existiam no código foram copiados EXATAMENTE, a não ser
-      que o pedido fosse mudar aquele mapa — o que o aluno pintou não sumiu.
-- [ ] O cenário está bonito e no tema (fundo, paralaxe, cores da legenda,
-      decoração) — o mapa define o layout, não deixa o visual genérico.
 - [ ] Os frames que VOCÊ desenhou são listas de strings (uma letra por
       pixel, "." transparente) com uma paleta de letras — nenhuma matriz de
       cores do tipo [["#3b2f2f",null,...]] em lugar nenhum da resposta.
@@ -652,15 +466,8 @@ export const GENRE_TEMPLATES = {
   tiro: "Crie um jogo de tiro (shooter) estilo Asteroids/Galaga, com nave controlável e inimigos ou obstáculos vindos da tela.",
 };
 
-export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame, lore, hasBackground, currentCode, mechanicsCustomized, maps }) {
+export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame, lore, hasBackground, currentCode, mechanicsCustomized }) {
   const spriteEntries = Object.entries(sprites || {});
-  // Mapas que existem na aba Mapas mas ainda não estão no código do jogo
-  // (o aluno criou do zero, gerou com "✨ Gerar com IA" ou renomeou). Os que
-  // já estão no código chegam lá com a versão atual (syncMapsIntoCode).
-  const code = currentCode || "";
-  const mapsOnlyInEditor = Object.entries(maps || {}).filter(
-    ([name]) => !code.includes(`MAPAS.${name} =`) && !code.includes(`MAPAS.${name}=`)
-  );
   const context = [
     mechanicsCustomized
       ? `Configuração da engine (CFG) — o aluno CONFIGUROU a aba Mecânicas de propósito pra ` +
@@ -692,21 +499,13 @@ export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame, l
           })
           .join("; ")
       : "Nenhum sprite manual ainda — desenhe você mesmo com capricho, seguindo a técnica de pixel art.",
-    mapsOnlyInEditor.length
-      ? `Mapas que estão só na aba Mapas (criados pelo aluno, ainda não estão no código) — ` +
-        `escreva-os no código com o padrão if (!MAPAS.x) MAPAS.x = {...} copiando exatamente, e use ` +
-        `se o pedido tiver a ver com eles:\n` +
-        mapsOnlyInEditor
-          .map(([name, m]) => `MAPAS.${name} = ${JSON.stringify({ estilo: m.estilo || "plataforma", tile: m.tile, legenda: m.legenda, linhas: m.linhas })}`)
-          .join("\n")
-      : "",
     hasExistingGame && currentCode
       ? `Código HTML ATUAL do jogo (já com todas as edições anteriores aplicadas) — edite ESTE ` +
         `arquivo e devolva ele completo de novo com a alteração pedida. Ignore qualquer versão ` +
         `de jogo mencionada mais cedo nesta conversa: já foi substituída por este código:\n` +
         `\`\`\`html\n${currentCode}\n\`\`\``
       : "Este é o primeiro pedido — crie o jogo do zero.",
-  ].filter(Boolean).join("\n");
+  ].join("\n");
 
   return `${context}\n\nPedido do aluno: ${userText}`;
 }

@@ -68,7 +68,6 @@ export function mountTestTab(panel) {
       sprites: state.project.sprites,
       mechanics: state.project.mechanics,
       backgroundImage: state.project.backgroundImage,
-      maps: state.project.maps,
     });
     renderInto(finalHtml);
   }
@@ -81,7 +80,6 @@ export function mountTestTab(panel) {
       sprites: state.project.sprites,
       mechanics: state.project.mechanics,
       backgroundImage: state.project.backgroundImage,
-      maps: state.project.maps,
     });
     const blob = new Blob([finalHtml], { type: "text/html" });
     window.open(URL.createObjectURL(blob), "_blank");
@@ -93,7 +91,6 @@ export function mountTestTab(panel) {
       sprites: state.project.sprites,
       mechanics: state.project.mechanics,
       backgroundImage: state.project.backgroundImage,
-      maps: state.project.maps,
     });
     const blob = new Blob([finalHtml], { type: "text/html" });
     const a = document.createElement("a");
@@ -113,34 +110,17 @@ export function mountTestTab(panel) {
         sprites: state.project.sprites,
         mechanics: state.project.mechanics,
         backgroundImage: state.project.backgroundImage,
-        maps: state.project.maps,
-      }),
+        }),
       game_code: state.project.gameCode,
       chat_history: state.project.chatHistory,
       sprites: state.project.sprites,
       mechanics: state.project.mechanics,
-      maps: state.project.maps,
       background_image: state.project.backgroundImage,
       team_name: state.project.teamName || null,
       partner_id: state.project.partnerId || null,
       updated_at: new Date().toISOString(),
       ...extra,
     };
-  }
-
-  // Grava em `games`. Se o banco ainda não tiver a coluna `maps` (SQL da v5
-  // não rodado no Supabase), grava de novo sem ela em vez de perder o save
-  // inteiro — só os mapas editados ficam de fora até o SQL ser aplicado.
-  async function writeGame(filters, method, body) {
-    try {
-      return await dbQuery("games", filters, { method, body });
-    } catch (err) {
-      if (!/maps/.test(err.message) || !("maps" in body)) throw err;
-      const { maps, ...rest } = body;
-      const result = await dbQuery("games", filters, { method, body: rest });
-      toast("Jogo salvo, mas os mapas editados não: falta rodar o SQL da v5 no Supabase.", "error");
-      return result;
-    }
   }
 
   // Salva sem mexer no status: primeiro save cria a linha (INSERT) e
@@ -158,9 +138,15 @@ export function mountTestTab(panel) {
     }
     try {
       if (state.project.id) {
-        await writeGame({ id: `eq.${state.project.id}` }, "PATCH", buildRow());
+        await dbQuery("games", { id: `eq.${state.project.id}` }, {
+          method: "PATCH",
+          body: buildRow(),
+        });
       } else {
-        const [row] = await writeGame({}, "POST", buildRow({ user_id: state.session.user.id, status: "rascunho" }));
+        const [row] = await dbQuery("games", {}, {
+          method: "POST",
+          body: buildRow({ user_id: state.session.user.id, status: "rascunho" }),
+        });
         if (row?.id) state.project.id = row.id;
       }
       await saveLoreWithGame({ silent });
@@ -218,7 +204,10 @@ export function mountTestTab(panel) {
         const ok = await saveDraft({ silent: true });
         if (!ok) return;
       }
-      await writeGame({ id: `eq.${state.project.id}` }, "PATCH", buildRow({ status: "enviado", submitted_at: new Date().toISOString() }));
+      await dbQuery("games", { id: `eq.${state.project.id}` }, {
+        method: "PATCH",
+        body: buildRow({ status: "enviado", submitted_at: new Date().toISOString() }),
+      });
       state.project.status = "enviado";
       await saveLoreWithGame({ silent: false });
       toast("Jogo enviado pra avaliação! 🎉", "success");

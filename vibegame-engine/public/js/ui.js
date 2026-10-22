@@ -47,7 +47,6 @@ export function mountTabs(root, tabs, { onSwitch } = {}) {
   tabs.forEach((tab, i) => {
     const btn = document.createElement("button");
     btn.className = "tab-btn" + (i === 0 ? " active" : "");
-    btn.dataset.tab = tab.id; // permite abrir uma aba por código (ex.: "▶ Testar" da aba Mapas)
     btn.innerHTML = `<span class="tab-icon">${tab.icon}</span><span>${tab.label}</span>`;
     btn.addEventListener("click", () => {
       nav.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));

@@ -62,97 +62,8 @@ export const state = {
                       // qualquer sprite de forma uniforme, os dois formatos convivem.)
 
     mechanics: { ...DEFAULT_MECHANICS },
-
-    // Mapas em grade (aba Mapas): nome -> { tile, legenda, linhas, origem }.
-    // IA e aluno editam o MESMO mapa: o aluno pinta na aba Mapas, e quando
-    // pede algo pra IA, ela recebe a versão atual e pode alterar (origem só
-    // diz quem mexeu por último: "ia" ou "aluno").
-    maps: {},
-    mapsBeforeAI: null, // cópia dos mapas antes da última mudança da IA (pra desfazer)
   },
 };
-
-// Tipos de tile que a engine entende (ver Vibe.loadMap em codeGen.js).
-export const MAP_TILE_TYPES = [
-  { id: "solido", label: "Sólido (chão/parede)" },
-  { id: "plataforma", label: "Plataforma (pousa por cima)" },
-  { id: "quebravel", label: "Quebrável (bloco que quebra)" },
-  { id: "mola", label: "Mola (joga pra cima)" },
-  { id: "escada", label: "Escada (sobe e desce)" },
-  { id: "perigo", label: "Perigo (espinho/lava)" },
-  { id: "item", label: "Item (coletável)" },
-  { id: "inimigo", label: "Inimigo (nasce aqui)" },
-  { id: "jogador", label: "Jogador (começa aqui)" },
-  { id: "checkpoint", label: "Checkpoint (respawn)" },
-  { id: "saida", label: "Saída (fim da fase)" },
-  { id: "decoracao", label: "Decoração (sem colisão)" },
-  { id: "piso", label: "Piso (chão do top-down)" },
-  { id: "agua", label: "Água (bloqueia no top-down)" },
-  { id: "npc", label: "NPC (personagem pra conversar)" },
-  { id: "porta", label: "Porta (vai pra outro mapa)" },
-];
-
-// Formas de desenho opcionais pra um tile (campo "forma" da legenda).
-export const MAP_TILE_SHAPES = [
-  { id: "", label: "— padrão do tipo —" },
-  { id: "arvore", label: "Árvore" },
-  { id: "pedra", label: "Pedra" },
-  { id: "arbusto", label: "Arbusto" },
-  { id: "caixa", label: "Caixa" },
-  { id: "flor", label: "Flores" },
-];
-
-// Legenda inicial de um mapa TOP-DOWN (RPG/aventura vista de cima).
-export const DEFAULT_TOPDOWN_LEGEND = {
-  "_": { tipo: "piso", cor: "#6aa84f", nome: "grama" },
-  ":": { tipo: "piso", cor: "#c2a26b", nome: "caminho" },
-  ";": { tipo: "piso", cor: "#8d8d8d", nome: "pedra" },
-  "#": { tipo: "solido", cor: "#8d6e63", nome: "parede" },
-  "T": { tipo: "solido", cor: "#2e7d32", nome: "arvore", forma: "arvore" },
-  "R": { tipo: "solido", cor: "#9e9e9e", nome: "pedra", forma: "pedra" },
-  "~": { tipo: "agua", cor: "#3d7cc9" },
-  "*": { tipo: "decoracao", cor: "#f06292", nome: "flores", forma: "flor" },
-  "^": { tipo: "perigo", cor: "#e04848" },
-  "D": { tipo: "porta", cor: "#8d5a2b", destino: "" },
-  "N": { tipo: "npc", cor: "#ab47bc", nome: "aldeao" },
-  "o": { tipo: "item", cor: "#ffd23f", nome: "moeda" },
-  "E": { tipo: "inimigo", cor: "#c0392b", nome: "inimigo" },
-  "P": { tipo: "jogador", cor: "#3fa7ff" },
-};
-
-export function defaultLegendFor(estilo) {
-  return JSON.parse(JSON.stringify(estilo === "topdown" ? DEFAULT_TOPDOWN_LEGEND : DEFAULT_MAP_LEGEND));
-}
-
-// Legenda inicial de um mapa criado do zero na aba Mapas.
-export const DEFAULT_MAP_LEGEND = {
-  "#": { tipo: "solido", cor: "#7a5230", topo: "#4caf50" },
-  "=": { tipo: "plataforma", cor: "#9c6b3c" },
-  "B": { tipo: "quebravel", cor: "#b5651d" },
-  "M": { tipo: "mola", cor: "#ff7043" },
-  "H": { tipo: "escada", cor: "#c8a165" },
-  "^": { tipo: "perigo", cor: "#e04848" },
-  "o": { tipo: "item", cor: "#ffd23f", nome: "moeda" },
-  "E": { tipo: "inimigo", cor: "#c0392b", nome: "inimigo" },
-  "P": { tipo: "jogador", cor: "#3fa7ff" },
-  "C": { tipo: "checkpoint", cor: "#29b6f6" },
-  "F": { tipo: "saida", cor: "#2ecc71" },
-  "~": { tipo: "decoracao", cor: "#3b5b7a" },
-};
-
-// Garante o formato que a aba Mapas e o jogo esperam: linhas todas com a
-// mesma largura, tile numérico e legenda presente.
-export function normalizeMap(map) {
-  const linhas = Array.isArray(map?.linhas) ? map.linhas.map((l) => String(l)) : [];
-  const cols = Math.max(1, ...linhas.map((l) => l.length));
-  return {
-    estilo: map?.estilo === "topdown" ? "topdown" : "plataforma",
-    tile: Number(map?.tile || map?.tamanho) || 32,
-    legenda: map?.legenda && typeof map.legenda === "object" ? map.legenda : { ...DEFAULT_MAP_LEGEND },
-    linhas: linhas.length ? linhas.map((l) => l.padEnd(cols, ".")) : [".".repeat(cols)],
-    origem: map?.origem === "aluno" ? "aluno" : "ia",
-  };
-}
 
 export function updateMechanics(patch) {
   Object.assign(state.project.mechanics, patch);
@@ -215,8 +126,6 @@ export function loadProjectFromRow(row) {
   state.project.teamName = row.team_name || "";
   state.project.partnerId = row.partner_id || null;
   Object.assign(state.project.mechanics, row.mechanics || {});
-  state.project.maps = row.maps && typeof row.maps === "object" ? row.maps : {};
-  state.project.mapsBeforeAI = null;
 }
 
 // Recarrega a lore (tabela separada `lore`, uma linha por jogo) de volta

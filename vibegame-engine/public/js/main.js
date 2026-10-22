@@ -4,7 +4,6 @@ import { auth, dbQuery } from "./supabaseClient.js";
 import { mountTabs, toast } from "./ui.js";
 import { mountChatTab } from "./tabs/chatTab.js";
 import { mountPixelEditorTab } from "./tabs/pixelEditorTab.js";
-import { mountMapEditorTab } from "./tabs/mapEditorTab.js";
 import { mountMechanicsTab } from "./tabs/mechanicsTab.js";
 import { mountTestTab } from "./tabs/testTab.js";
 import { mountBancaTab } from "./tabs/bancaTab.js";
@@ -101,20 +100,15 @@ function renderShell() {
 
   let testTabApi = null;
   let pixelTabApi = null;
-  let mapTabApi = null;
 
   const tabs = [
     { id: "ia", icon: "💬", label: "IA", mount: (panel) => mountChatTab(panel, {
         onGameUpdated: () => {
           testTabApi?.render();
           pixelTabApi?.refresh();
-          mapTabApi?.refresh();
         },
       }) },
     { id: "personagens", icon: "🎨", label: "Personagens", mount: (panel) => (pixelTabApi = mountPixelEditorTab(panel)) },
-    { id: "mapas", icon: "🗺️", label: "Mapas", mount: (panel) => (mapTabApi = mountMapEditorTab(panel, {
-        onPlay: () => root.querySelector('.tab-btn[data-tab="testar"]')?.click(),
-      })) },
     { id: "mecanicas", icon: "⚙️", label: "Mecânicas", mount: mountMechanicsTab },
     { id: "lore", icon: "📜", label: "Lore", mount: mountLoreTab },
     { id: "perfil", icon: "🙍", label: "Perfil", mount: (panel) => mountPerfilTab(panel, { onProjectChanged: () => testTabApi?.render() }) },
@@ -131,7 +125,6 @@ function renderShell() {
   mountTabs(root.querySelector("#tabs-root"), tabs, {
     onSwitch: (id) => {
       if (id === "testar") testTabApi?.render();
-      if (id === "mapas") mapTabApi?.refresh();
     },
   });
 }
