@@ -461,15 +461,23 @@ window.Vibe = (function () {
   //   checkpoint — bandeirinha de respawn
   //   saida      — bandeira de fim de fase
   //   decoracao  — só visual, sem colisão
+  //   piso       — chão de mapa top-down (só visual, anda por cima)
+  //   agua       — no top-down bloqueia a passagem
+  //   npc        — ponto onde fica um personagem pra conversar (não é desenhado)
+  //   porta      — leva pra outro mapa ("destino": "nomeDoMapa")
+  // "estilo" do mapa: "plataforma" (padrão, vista de lado) ou "topdown"
+  // (RPG/aventura vista de cima — fora do mapa é parede, não buraco).
+  // "forma" na legenda (arvore, pedra, arbusto, caixa, flor) muda o desenho.
   // Caractere que não está na legenda conta como "solido".
   var drawMapTile = ${drawMapTile.toString()};
   var sameBlock = ${sameBlock.toString()};
   var MAP_SOLIDO = { solido: 1, quebravel: 1, mola: 1 };
-  var MAP_SPAWN = { item: 1, inimigo: 1, jogador: 1 };
+  var MAP_SPAWN = { item: 1, inimigo: 1, jogador: 1, npc: 1 };
 
   function loadMap(map) {
     map = map || {};
     var T = map.tile || map.tamanho || 32;
+    var estilo = map.estilo === "topdown" ? "topdown" : "plataforma";
     var linhas = map.linhas || [];
     var legenda = map.legenda || {};
     var rows = linhas.length, cols = 0;
@@ -492,14 +500,16 @@ window.Vibe = (function () {
     }
     function cellAt(col, row) {
       var ch = chars[row][col], def = defOf(ch);
-      return { x: col * T, y: row * T, width: T, height: T, col: col, row: row, char: ch, tipo: def.tipo || "solido", nome: def.nome || def.tipo || "solido", def: def };
+      return { x: col * T, y: row * T, width: T, height: T, col: col, row: row, char: ch, tipo: def.tipo || "solido", nome: def.nome || def.tipo || "solido", def: def, estilo: estilo, destino: def.destino || null };
     }
 
     var world = {
-      tile: T, cols: cols, rows: rows, width: cols * T, height: rows * T,
+      tile: T, cols: cols, rows: rows, width: cols * T, height: rows * T, estilo: estilo,
       jogador: null, itens: [], inimigos: [], perigos: [], saidas: [], checkpoints: [],
       escadas: [], molas: [], quebraveis: [], plataformas: [], decoracoes: [],
+      npcs: [], portas: [], aguas: [],
     };
+    var pisoCount = {};
     for (var y = 0; y < rows; y++) {
       for (var x = 0; x < cols; x++) {
         var tp = tipoAt(x, y);
@@ -516,14 +526,23 @@ window.Vibe = (function () {
         else if (tp === "quebravel") world.quebraveis.push(cell);
         else if (tp === "plataforma") world.plataformas.push(cell);
         else if (tp === "decoracao") world.decoracoes.push(cell);
+        else if (tp === "npc") world.npcs.push(cell);
+        else if (tp === "porta") world.portas.push(cell);
+        else if (tp === "agua") world.aguas.push(cell);
+        else if (tp === "piso") pisoCount[cell.char] = (pisoCount[cell.char] || 0) + 1;
       }
     }
+    // Piso mais comum: desenhado embaixo de jogador/itens/NPCs/árvores no
+    // top-down, pra não ficar um "buraco" no chão onde eles nascem.
+    var pisoChar = null;
+    for (var pc in pisoCount) if (!pisoChar || pisoCount[pc] > pisoCount[pisoChar]) pisoChar = pc;
 
     world.tipoAt = tipoAt;
     world.isSolid = function (col, row) {
       if (col < 0 || col >= cols) return true;   // bordas laterais do mapa são parede
-      if (row < 0 || row >= rows) return false;  // acima: livre; abaixo: buraco
-      return !!MAP_SOLIDO[tipoAt(col, row)];
+      if (row < 0 || row >= rows) return estilo === "topdown"; // plataforma: acima livre, abaixo buraco
+      var tp = tipoAt(col, row);
+      return !!MAP_SOLIDO[tp] || (estilo === "topdown" && tp === "agua");
     };
     world.isPlatform = function (col, row) { return tipoAt(col, row) === "plataforma"; };
     world.solidAt = function (px, py) { return world.isSolid(Math.floor(px / T), Math.floor(py / T)); };
@@ -537,7 +556,18 @@ window.Vibe = (function () {
       if (row < 0 || row >= rows || col < 0 || col >= cols) return;
       chars[row][col] = ch || ".";
     };
-    world.breakTile = function (col, row) { world.setTile(col, row, "."); };
+    world.breakTile = function (col, row) { world.setTile(col, row, estilo === "topdown" && pisoChar ? pisoChar : "."); };
+    // Célula "interessante" mais perto da entidade dentro de um raio (em px)
+    // — ex.: mundo.nearest(jogador, mundo.npcs, 40) pra saber se dá pra
+    // conversar, ou mundo.portas pra trocar de mapa.
+    world.nearest = function (e, list, radius) {
+      var ex = e.x + e.width / 2, ey = e.y + e.height / 2, best = null, bd = radius || T;
+      for (var i = 0; i < list.length; i++) {
+        var c = list[i], d = Math.hypot(c.x + c.width / 2 - ex, c.y + c.height / 2 - ey);
+        if (d <= bd) { bd = d; best = c; }
+      }
+      return best;
+    };
     // true se o centro da entidade está numa escada (pra subir/descer).
     world.onLadder = function (e) {
       var cx = Math.floor((e.x + e.width / 2) / T);
@@ -559,8 +589,12 @@ window.Vibe = (function () {
       for (var yy = r0; yy <= r1; yy++) {
         for (var xx = c0; xx <= c1; xx++) {
           var t = tipoAt(xx, yy);
-          if (!t || MAP_SPAWN[t]) continue;
+          if (!t) continue;
           var cl = cellAt(xx, yy);
+          if (estilo === "topdown" && pisoChar && t !== "piso" && (MAP_SPAWN[t] || cl.def.forma || t === "porta" || t === "decoracao" || t === "perigo")) {
+            drawMapTile(ctx, { x: cl.x, y: cl.y, col: xx, row: yy, tipo: "piso", def: defOf(pisoChar), estilo: estilo }, T, {}, nowMs || 0);
+          }
+          if (MAP_SPAWN[t]) continue;
           var spr = cl.def.sprite && sprites[cl.def.sprite];
           if (spr) { drawSprite(ctx, spr, "idle", nowMs || 0, cl.x, cl.y, T, T); continue; }
           drawMapTile(ctx, cl, T, {
@@ -710,15 +744,14 @@ export function assembleFinalGame(aiHtml, { sprites, mechanics, backgroundImage,
   // instruída (prompts.js) a usar isso como pano de fundo do jogo quando
   // presente, em vez de desenhar/inventar um cenário do zero.
   const backgroundJson = JSON.stringify(backgroundImage || null);
-  // Mapas: só os que o ALUNO editou na aba Mapas entram aqui. Os que ainda
-  // são da IA já estão no próprio código do jogo (if (!MAPAS.x) MAPAS.x = ...)
-  // — injetar a cópia importada só arriscaria sobrescrever uma versão mais
-  // nova da IA com uma antiga.
+  // Mapas: a versão ATUAL de cada mapa (aba Mapas, já com o que a IA e o
+  // aluno mexeram). O código da IA inicializa com if (!MAPAS.x), então o que
+  // vem daqui vence — é o que faz a edição do aluno valer no jogo na hora.
   const mapsJson = JSON.stringify(
     Object.fromEntries(
       Object.entries(maps || {})
-        .filter(([, m]) => m && m.origem === "aluno")
-        .map(([name, m]) => [name, { tile: m.tile, legenda: m.legenda, linhas: m.linhas }])
+        .filter(([, m]) => m && Array.isArray(m.linhas))
+        .map(([name, m]) => [name, { estilo: m.estilo || "plataforma", tile: m.tile, legenda: m.legenda, linhas: m.linhas }])
     )
   );
 

@@ -1,5 +1,5 @@
 import { state, saveSprite, normalizeSprite, mechanicsCustomized, normalizeMap } from "../state.js";
-import { askAI, parseAIResponse } from "../api.js";
+import { askAI, parseAIResponse, syncMapsIntoCode } from "../api.js";
 import { toast } from "../ui.js";
 
 const GENRE_CHIPS = [
@@ -62,6 +62,9 @@ export function mountChatTab(panel, { onGameUpdated }) {
 
     const thinking = addMessage("system", "Gerando o jogo... (pode levar até 1-2 minutos pra jogos mais elaborados)");
     try {
+      // Antes de perguntar: o código do jogo recebe a versão ATUAL de cada
+      // mapa (com o que o aluno pintou na aba Mapas) — a IA edita a partir dela.
+      if (state.project.gameCode) state.project.gameCode = syncMapsIntoCode(state.project.gameCode, state.project.maps);
       const raw = await askAI({
         userText: text,
         chatHistory: state.project.chatHistory,
@@ -100,21 +103,23 @@ export function mountChatTab(panel, { onGameUpdated }) {
         });
       }
 
-      // Mapas que a IA escreveu: vão pra aba Mapas. Os que ainda são "da IA"
-      // são sempre substituídos pela versão nova (a IA pode ter mudado o
-      // mapa nesse pedido); os que o aluno já editou ficam como estão — a
-      // versão dele é a que vale no jogo.
+      // Mapas que a IA devolveu: ela recebeu a versão atual (com as edições
+      // do aluno), então a resposta dela É a versão nova — entra na aba Mapas.
+      // Mapas que a IA não mexeu ficam como estão. Antes de trocar, guarda
+      // uma cópia: a aba Mapas oferece "desfazer a mudança da IA".
+      const before = JSON.parse(JSON.stringify(state.project.maps));
       const newMapNames = [];
+      const changedMapNames = [];
       Object.entries(maps || {}).forEach(([name, map]) => {
         const current = state.project.maps[name];
-        if (current?.origem === "aluno") return;
+        const next = normalizeMap(map);
         if (!current) newMapNames.push(name);
-        state.project.maps[name] = { ...normalizeMap(map), origem: "ia" };
+        else if (JSON.stringify(current.linhas) !== JSON.stringify(next.linhas) || JSON.stringify(current.legenda) !== JSON.stringify(next.legenda)) {
+          changedMapNames.push(name);
+        } else return;
+        state.project.maps[name] = { ...next, origem: "ia" };
       });
-      // Mapa "da IA" que sumiu do código novo (a IA renomeou/removeu) sai da aba.
-      Object.keys(state.project.maps).forEach((name) => {
-        if (state.project.maps[name].origem === "ia" && !(maps && maps[name])) delete state.project.maps[name];
-      });
+      if (changedMapNames.length) state.project.mapsBeforeAI = before;
 
       thinking.remove();
       addMessage("model", info ? `✅ ${info.titulo} — ${info.objetivo}` : "✅ Jogo atualizado.");
@@ -123,6 +128,9 @@ export function mountChatTab(panel, { onGameUpdated }) {
       }
       if (newMapNames.length) {
         addMessage("system", `🗺️ Mapa(s) criado(s) pela IA: ${newMapNames.join(", ")} — abra a aba Mapas pra editar do seu jeito.`);
+      }
+      if (changedMapNames.length) {
+        addMessage("system", `🗺️ A IA mexeu no(s) mapa(s): ${changedMapNames.join(", ")}. Não gostou? Na aba Mapas tem "Desfazer mudança da IA".`);
       }
       onGameUpdated();
     } catch (err) {

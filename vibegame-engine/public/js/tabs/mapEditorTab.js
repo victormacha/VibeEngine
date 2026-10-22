@@ -5,17 +5,17 @@
 // mapa passa a ser "do aluno": a versão daqui é injetada no jogo
 // (window.VIBE_MAPS) e a IA não sobrescreve mais, até o aluno clicar em
 // "Devolver pra IA".
-import { state, normalizeMap, normalizeSprite, MAP_TILE_TYPES, DEFAULT_MAP_LEGEND } from "../state.js";
-import { extractEmbeddedMaps, generateMapWithAI } from "../api.js";
+import { state, normalizeMap, normalizeSprite, MAP_TILE_TYPES, MAP_TILE_SHAPES, defaultLegendFor } from "../state.js";
+import { generateMapWithAI } from "../api.js";
 import { drawMapTile, sameBlock } from "../mapRender.js";
 import { toast, openModal } from "../ui.js";
 
 const MAX_COLS = 200;
 const MAX_ROWS = 60;
 // Caracteres que dá pra usar na legenda sem quebrar o formato do mapa
-// (nada de aspas, vírgula, chaves, dois-pontos ou barra invertida).
-const SAFE_CHARS = "#=^~*+-|/!?@$%&<>ABCDGHIJKLMNOQRSTUVWXYZabcdefghijklmnpqrstuvwxyz0123456789";
-const SPAWN_ICON = { item: "★", inimigo: "☠", jogador: "☺" };
+// (nada de aspas, vírgula, chaves ou barra invertida).
+const SAFE_CHARS = "#=^~*+-|/!?@$%&<>_:;ABCDGHIJKLMNOQRSTUVWXYZabcdefghijklmnpqrstuvwxyz0123456789";
+const SPAWN_ICON = { item: "★", inimigo: "☠", jogador: "☺", npc: "!" };
 const TOOLS = [
   { id: "brush", icon: "🖌️", key: "b", label: "Pincel" },
   { id: "eraser", icon: "🧽", key: "e", label: "Borracha" },
@@ -48,6 +48,13 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
           <button id="map-resize" class="btn-ghost">Aplicar</button>
         </div>
         <p class="hint map-hint-tight">Linhas novas entram por cima (o chão fica onde está); colunas novas, à direita.</p>
+
+        <label>Estilo do mapa</label>
+        <select id="map-estilo">
+          <option value="plataforma">🏃 Plataforma (vista de lado)</option>
+          <option value="topdown">🧭 Top-down / RPG (vista de cima)</option>
+        </select>
+        <button id="map-estilo-legend" class="btn-ghost map-full" title="Acrescenta os tiles prontos do estilo (piso, árvore, água, porta, NPC...)">+ Tiles prontos deste estilo</button>
 
         <label>Tamanho do tile no jogo</label>
         <select id="map-tile">
@@ -138,42 +145,56 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
 
   const map = () => (currentName ? state.project.maps[currentName] : null);
 
-  // ---------- origem (IA x aluno) ----------
-  // Primeira edição num mapa da IA: ele vira do aluno (ver topo do arquivo).
+  // ---------- quem mexeu por último (IA x aluno) ----------
+  // IA e aluno editam o MESMO mapa: o que o aluno pinta aqui vai pra IA no
+  // próximo pedido, e ela pode alterar o mapa quando ajudar. `origem` só
+  // registra quem mexeu por último.
   function claim() {
     const m = map();
     if (m && m.origem !== "aluno") {
       m.origem = "aluno";
       renderOrigin();
-      toast("Agora esse mapa é seu — a IA não vai mais sobrescrever ele.", "info");
     }
+  }
+
+  // Versão deste mapa antes da última resposta da IA, se ela mudou algo nele.
+  function versionBeforeAI() {
+    const before = state.project.mapsBeforeAI;
+    const m = map();
+    if (!before || !m || m.origem !== "ia") return undefined;
+    const old = before[currentName];
+    if (old && JSON.stringify(old.linhas) === JSON.stringify(m.linhas) && JSON.stringify(old.legenda) === JSON.stringify(m.legenda)) return undefined;
+    return old || null; // null = a IA criou esse mapa agora
   }
 
   function renderOrigin() {
     const m = map();
     if (!m) return (originEl.innerHTML = "");
-    if (m.origem === "aluno") {
-      originEl.innerHTML = `<span class="map-badge map-badge-aluno">✏️ Editado por você</span>
-        <p class="hint map-hint-tight">A IA usa a sua versão e não mexe mais nela.</p>
-        <button id="map-giveback" class="btn-ghost map-full">↩ Devolver pra IA (descarta suas edições)</button>`;
-      originEl.querySelector("#map-giveback").addEventListener("click", giveBackToAI);
-    } else {
-      originEl.innerHTML = `<span class="map-badge map-badge-ia">🤖 Criado pela IA</span>
-        <p class="hint map-hint-tight">Se você editar, ele vira seu. Enquanto não editar, a IA pode refazer ele a cada pedido.</p>`;
-    }
+    const badge = m.origem === "aluno"
+      ? `<span class="map-badge map-badge-aluno">✏️ Você mexeu por último</span>`
+      : `<span class="map-badge map-badge-ia">🤖 A IA mexeu por último</span>`;
+    const prev = versionBeforeAI();
+    originEl.innerHTML = `${badge}
+      <p class="hint map-hint-tight">Você e a IA editam o mesmo mapa: o que você pintar vai pra IA no
+        próximo pedido, e dá pra pedir na aba IA coisas como <code>coloca mais inimigos na fase1</code>.</p>
+      ${prev !== undefined ? `<button id="map-undo-ai" class="btn-ghost map-full">↩ Desfazer mudança da IA</button>` : ""}`;
+    originEl.querySelector("#map-undo-ai")?.addEventListener("click", () => undoAIChange(prev));
   }
 
-  function giveBackToAI() {
-    const fromCode = state.project.gameCode ? extractEmbeddedMaps(state.project.gameCode)[currentName] : null;
-    const msg = fromCode
-      ? `Voltar o mapa "${currentName}" pra versão da IA? Suas edições nele serão perdidas.`
-      : `O jogo atual não tem um mapa "${currentName}" feito pela IA — devolver vai APAGAR esse mapa. Continuar?`;
+  function undoAIChange(prev) {
+    const msg = prev
+      ? `Voltar o mapa "${currentName}" pra como estava antes da última resposta da IA?`
+      : `A IA criou o mapa "${currentName}" na última resposta. Desfazer vai apagar esse mapa. Continuar?`;
     if (!confirm(msg)) return;
-    if (fromCode) state.project.maps[currentName] = { ...normalizeMap(fromCode), origem: "ia" };
-    else delete state.project.maps[currentName];
-    resetHistory();
+    if (prev) {
+      pushUndo();
+      state.project.maps[currentName] = { ...normalizeMap(prev), origem: "aluno" };
+    } else {
+      delete state.project.maps[currentName];
+      resetHistory();
+    }
     renderAll();
-    toast(fromCode ? "Mapa devolvido pra IA." : "Mapa removido.", "info");
+    toast("Mudança da IA desfeita. (Pra a IA não refazer, diga isso no próximo pedido.)", "info");
   }
 
   // ---------- desfazer ----------
@@ -235,10 +256,42 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
     rowsInput.value = map().linhas.length;
     tileSelect.value = String(map().tile);
     if (!tileSelect.value) tileSelect.value = "32";
+    estiloSelect.value = map().estilo;
     renderOrigin();
     renderLegend();
     draw();
   }
+
+  const estiloSelect = $("#map-estilo");
+  estiloSelect.addEventListener("change", () => {
+    pushUndo();
+    claim();
+    map().estilo = estiloSelect.value;
+    draw();
+    renderLegend();
+  });
+
+  // Junta na legenda os tiles prontos do estilo que ainda não existem (pelo
+  // nome/tipo), em caracteres livres — não mexe em nada que já está pintado.
+  $("#map-estilo-legend").addEventListener("click", () => {
+    const m = map();
+    const ready = defaultLegendFor(m.estilo);
+    const have = new Set(Object.values(m.legenda).map((d) => `${d.tipo}:${d.nome || ""}:${d.forma || ""}`));
+    let added = 0;
+    pushUndo();
+    Object.entries(ready).forEach(([ch, def]) => {
+      if (have.has(`${def.tipo}:${def.nome || ""}:${def.forma || ""}`)) return;
+      const free = !m.legenda[ch] ? ch : [...SAFE_CHARS].find((c) => !m.legenda[c]);
+      if (!free) return;
+      m.legenda[free] = def;
+      added++;
+    });
+    if (!added) return toast("A legenda já tem todos os tiles prontos desse estilo.", "info");
+    claim();
+    renderLegend();
+    draw();
+    toast(`${added} tile(s) adicionado(s) à legenda.`, "success");
+  });
 
   selectEl.addEventListener("change", () => {
     currentName = selectEl.value;
@@ -267,17 +320,63 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
     return `fase${i}`;
   }
 
+  function guessEstilo() {
+    const mov = state.project.mechanics?.movimento;
+    return mov === "topdown" || ["topdown", "puzzle"].includes(state.project.genre) ? "topdown" : "plataforma";
+  }
+
+  // Mapa novo: escolhe o estilo (plataforma = vista de lado; top-down = RPG
+  // / aventura / labirinto vista de cima) e já vem com um esboço mínimo.
   function newEmptyMap() {
-    const name = askMapName("Nome do mapa (ex: fase1, fase2, labirinto):", nextMapName());
-    if (!name) return;
-    const cols = 40;
-    const rows = 14;
-    const linhas = Array.from({ length: rows }, (_, y) => (y >= rows - 2 ? "#" : ".").repeat(cols));
-    linhas[rows - 3] = "..P" + ".".repeat(cols - 5) + "F.";
-    state.project.maps[name] = { tile: 32, legenda: JSON.parse(JSON.stringify(DEFAULT_MAP_LEGEND)), linhas, origem: "aluno" };
-    currentName = name;
-    resetHistory();
-    renderAll();
+    const { overlay, close } = openModal(`
+      <h2>🗺️ Novo mapa</h2>
+      <label>Nome</label>
+      <input type="text" id="new-name" value="${escapeAttr(nextMapName())}" maxlength="30" />
+      <label>Estilo</label>
+      <div class="map-style-pick">
+        <button class="map-style-opt" data-estilo="plataforma">🏃 Plataforma<span>vista de lado, com pulo e gravidade</span></button>
+        <button class="map-style-opt" data-estilo="topdown">🧭 Top-down / RPG<span>vista de cima, tipo Zelda, Pokémon, Undertale</span></button>
+      </div>
+      <div class="map-gen-grid">
+        <label>Colunas <input type="number" id="new-cols" min="8" max="${MAX_COLS}" /></label>
+        <label>Linhas <input type="number" id="new-rows" min="6" max="${MAX_ROWS}" /></label>
+      </div>
+      <button id="new-go" class="btn-primary map-full">Criar mapa</button>
+    `);
+    let estilo = guessEstilo();
+    const colsIn = overlay.querySelector("#new-cols");
+    const rowsIn = overlay.querySelector("#new-rows");
+    const pick = (e) => {
+      estilo = e;
+      overlay.querySelectorAll(".map-style-opt").forEach((b) => b.classList.toggle("selected", b.dataset.estilo === e));
+      colsIn.value = e === "topdown" ? 25 : 40;
+      rowsIn.value = e === "topdown" ? 15 : 14;
+    };
+    overlay.querySelectorAll(".map-style-opt").forEach((b) => b.addEventListener("click", () => pick(b.dataset.estilo)));
+    pick(estilo);
+    overlay.querySelector("#new-go").addEventListener("click", () => {
+      const name = overlay.querySelector("#new-name").value.trim().replace(/[^\w]/g, "");
+      if (!name) return toast("Use só letras, números e _ no nome.", "error");
+      if (state.project.maps[name]) return toast(`Já existe um mapa "${name}".`, "error");
+      const cols = clampInt(colsIn.value, 8, MAX_COLS);
+      const rows = clampInt(rowsIn.value, 6, MAX_ROWS);
+      let linhas;
+      if (estilo === "topdown") {
+        // sala cercada de árvores, com grama por dentro
+        linhas = Array.from({ length: rows }, (_, y) =>
+          Array.from({ length: cols }, (_, x) => (y === 0 || x === 0 || y === rows - 1 || x === cols - 1 ? "T" : "_")).join(""));
+        const mid = Math.floor(rows / 2);
+        linhas[mid] = linhas[mid].slice(0, 2) + "P" + linhas[mid].slice(3);
+      } else {
+        linhas = Array.from({ length: rows }, (_, y) => (y >= rows - 2 ? "#" : ".").repeat(cols));
+        linhas[rows - 3] = "..P" + ".".repeat(cols - 5) + "F.";
+      }
+      state.project.maps[name] = { estilo, tile: 32, legenda: defaultLegendFor(estilo), linhas, origem: "aluno" };
+      currentName = name;
+      resetHistory();
+      close();
+      renderAll();
+    });
   }
   $("#map-new").addEventListener("click", newEmptyMap);
   $("#map-empty-new").addEventListener("click", newEmptyMap);
@@ -346,7 +445,8 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
       const swatch = document.createElement("canvas");
       swatch.width = swatch.height = 24;
       swatch.className = "legend-swatch";
-      drawCellPreview(swatch.getContext("2d"), def, 24);
+      drawCellPreview(swatch.getContext("2d"), def, 24, m.estilo);
+      const otherMaps = Object.keys(state.project.maps).filter((n) => n !== currentName);
       row.innerHTML = `
         <button class="legend-pick" title="Pintar com este tile">
           <span class="legend-swatch-slot"></span>
@@ -359,7 +459,18 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
             ${MAP_TILE_TYPES.map((t) => `<option value="${t.id}" ${t.id === def.tipo ? "selected" : ""}>${t.label}</option>`).join("")}
           </select>
           <label class="legend-field">Cor <input type="color" class="legend-color" value="${toHex(def.cor)}" /></label>
-          ${def.tipo === "solido" ? `<label class="legend-field">Grama <input type="color" class="legend-topo" value="${toHex(def.topo, "#4caf50")}" /></label>` : ""}
+          ${def.tipo === "solido" && m.estilo !== "topdown" && !def.forma ? `<label class="legend-field">Grama <input type="color" class="legend-topo" value="${toHex(def.topo, "#4caf50")}" /></label>` : ""}
+          <label class="legend-field legend-field-wide">Forma
+            <select class="legend-forma">
+              ${MAP_TILE_SHAPES.map((f) => `<option value="${f.id}" ${(def.forma || "") === f.id ? "selected" : ""}>${f.label}</option>`).join("")}
+            </select>
+          </label>
+          ${def.tipo === "porta" ? `<label class="legend-field legend-field-wide">Leva pra
+            <select class="legend-destino">
+              <option value="">— nenhum mapa —</option>
+              ${otherMaps.map((n) => `<option value="${escapeAttr(n)}" ${def.destino === n ? "selected" : ""}>${escapeHtml(n)}</option>`).join("")}
+            </select>
+          </label>` : ""}
           <label class="legend-field legend-field-wide">Nome <input type="text" class="legend-nome" value="${escapeAttr(def.nome || "")}" placeholder="${escapeAttr(labelFor(def.tipo))}" maxlength="24" /></label>
           <label class="legend-field legend-field-wide">Sprite
             <select class="legend-sprite">
@@ -385,6 +496,11 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
       row.querySelector(".legend-type").addEventListener("change", (e) => edit(() => { def.tipo = e.target.value; }));
       row.querySelector(".legend-color").addEventListener("change", (e) => edit(() => { def.cor = e.target.value; }));
       row.querySelector(".legend-topo")?.addEventListener("change", (e) => edit(() => { def.topo = e.target.value; }));
+      row.querySelector(".legend-forma").addEventListener("change", (e) => edit(() => {
+        if (e.target.value) def.forma = e.target.value;
+        else delete def.forma;
+      }));
+      row.querySelector(".legend-destino")?.addEventListener("change", (e) => edit(() => { def.destino = e.target.value; }));
       row.querySelector(".legend-nome").addEventListener("change", (e) => edit(() => {
         const v = e.target.value.trim();
         if (v) def.nome = v;
@@ -461,7 +577,7 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
 
   // Pincel quadrado (1, 2 ou 3) — itens/inimigos/jogador sempre 1 célula.
   function stamp(col, row, ch) {
-    const single = ch !== "." && ["jogador", "item", "inimigo"].includes(map().legenda[ch]?.tipo);
+    const single = ch !== "." && ["jogador", "item", "inimigo", "npc"].includes(map().legenda[ch]?.tipo);
     const size = single ? 1 : brushSize();
     const off = Math.floor((size - 1) / 2);
     let any = false;
@@ -702,7 +818,12 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
       <p class="hint" style="margin-top:0">Descreva a fase. A IA monta o mapa com os tiles da legenda
         ${m ? `do mapa <strong>${escapeHtml(currentName)}</strong>` : "padrão"} — depois é só ajustar pintando.</p>
       <label>Como é a fase?</label>
-      <textarea id="gen-desc" rows="3" placeholder="ex: uma caverna com muitos espinhos, duas molas e um caminho secreto com moedas lá em cima"></textarea>
+      <textarea id="gen-desc" rows="3" placeholder="ex: uma vila com casas, um lago no meio, 3 NPCs e uma porta pra floresta — ou: caverna com espinhos, duas molas e moedas escondidas"></textarea>
+      <label>Estilo</label>
+      <select id="gen-estilo">
+        <option value="plataforma">🏃 Plataforma (vista de lado)</option>
+        <option value="topdown">🧭 Top-down / RPG (vista de cima)</option>
+      </select>
       <div class="map-gen-grid">
         <label>Colunas <input type="number" id="gen-cols" min="10" max="${MAX_COLS}" value="${cols}" /></label>
         <label>Linhas <input type="number" id="gen-rows" min="6" max="${MAX_ROWS}" value="${rows}" /></label>
@@ -717,11 +838,15 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
     `);
     const go = overlay.querySelector("#gen-go");
     const errBox = overlay.querySelector("#gen-error");
+    const estiloIn = overlay.querySelector("#gen-estilo");
+    estiloIn.value = m ? m.estilo : guessEstilo();
     go.addEventListener("click", async () => {
       const c = clampInt(overlay.querySelector("#gen-cols").value, 10, MAX_COLS);
       const r = clampInt(overlay.querySelector("#gen-rows").value, 6, MAX_ROWS);
       const target = overlay.querySelector("#gen-target").value;
-      const legenda = m ? JSON.parse(JSON.stringify(m.legenda)) : JSON.parse(JSON.stringify(DEFAULT_MAP_LEGEND));
+      const estilo = estiloIn.value;
+      // Mesma legenda do mapa atual quando o estilo é o mesmo; senão, os tiles prontos do estilo.
+      const legenda = m && m.estilo === estilo ? JSON.parse(JSON.stringify(m.legenda)) : defaultLegendFor(estilo);
       go.disabled = true;
       errBox.hidden = true;
       let secs = 0;
@@ -730,9 +855,10 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
       try {
         const gen = await generateMapWithAI({
           descricao: overlay.querySelector("#gen-desc").value.trim(),
-          cols: c, rows: r, legenda, tile: m?.tile || 32,
-          genero: state.project.mechanics?.movimento || state.project.genre,
+          cols: c, rows: r, legenda, tile: m?.tile || 32, estilo,
+          genero: state.project.genre,
           lore: state.project.lore?.content,
+          outrosMapas: Object.keys(state.project.maps).filter((n) => n !== currentName),
         });
         if (target === "replace" && m) {
           pushUndo();
@@ -789,9 +915,25 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
   }
 
   // Mesmo desenho do jogo (mapRender.js), com ícones nos pontos de nascimento.
-  function drawCell(target, m, col, row, z, def, now, alpha = 1) {
+  // Piso mais usado do mapa top-down — desenhado embaixo de jogador, itens,
+  // NPCs, árvores e portas (igual ao jogo, ver Vibe.loadMap).
+  function mainFloor(m) {
+    if (!m || m.estilo !== "topdown") return null;
+    const count = {};
+    m.linhas.forEach((l) => { for (const ch of l) if (m.legenda[ch]?.tipo === "piso") count[ch] = (count[ch] || 0) + 1; });
+    const best = Object.keys(count).sort((a, b) => count[b] - count[a])[0];
+    return best ? m.legenda[best] : null;
+  }
+  let floorCache = null;
+
+  function drawCell(target, m, col, row, z, def, now, alpha = 1, estiloOverride) {
     target.globalAlpha = alpha;
-    const t = { x: col * z, y: row * z, tipo: def.tipo || "solido", def };
+    const estilo = estiloOverride || m?.estilo || "plataforma";
+    const t = { x: col * z, y: row * z, col, row, tipo: def.tipo || "solido", def, estilo };
+    const floor = m === map() ? floorCache : mainFloor(m);
+    if (floor && t.tipo !== "piso" && (SPAWN_ICON[t.tipo] || def.forma || ["porta", "decoracao", "perigo"].includes(t.tipo))) {
+      drawMapTile(target, { x: t.x, y: t.y, col, row, tipo: "piso", def: floor, estilo }, z, {}, now);
+    }
     const thumb = def.sprite && spriteThumb(def.sprite);
     if (thumb) {
       target.imageSmoothingEnabled = false;
@@ -816,11 +958,11 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
     target.globalAlpha = 1;
   }
 
-  function drawCellPreview(target, def, size) {
+  function drawCellPreview(target, def, size, estilo) {
     target.clearRect(0, 0, size, size);
     target.fillStyle = "#151824";
     target.fillRect(0, 0, size, size);
-    drawCell(target, null, 0, 0, size, def, 0);
+    drawCell(target, null, 0, 0, size, def, 0, 1, estilo);
   }
 
   function draw() {
@@ -832,11 +974,17 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
     const now = performance.now();
     if (canvas.width !== cols * z) canvas.width = cols * z;
     if (canvas.height !== rows * z) canvas.height = rows * z;
-    // céu em degradê, pra ficar parecido com um jogo e não com uma planilha
-    const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    sky.addColorStop(0, "#1d2b4a");
-    sky.addColorStop(1, "#151824");
-    ctx.fillStyle = sky;
+    floorCache = mainFloor(m);
+    if (m.estilo === "topdown") {
+      // vista de cima: fundo escuro liso (célula vazia = fora do mapa)
+      ctx.fillStyle = "#0f1118";
+    } else {
+      // céu em degradê, pra ficar parecido com um jogo e não com uma planilha
+      const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      sky.addColorStop(0, "#1d2b4a");
+      sky.addColorStop(1, "#151824");
+      ctx.fillStyle = sky;
+    }
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     for (let y = 0; y < rows; y++) {
@@ -920,10 +1068,16 @@ export function mountMapEditorTab(panel, { onPlay } = {}) {
     if (count.item) parts.push(`★ ${count.item} itens`);
     if (count.inimigo) parts.push(`☠ ${count.inimigo} inimigos`);
     if (count.checkpoint) parts.push(`🚩 ${count.checkpoint} checkpoints`);
+    if (count.npc) parts.push(`! ${count.npc} NPCs`);
+    if (count.porta) parts.push(`🚪 ${count.porta} portas`);
     const warn = [];
     if (!count.jogador) warn.push("sem ponto do jogador (☺)");
-    if (!count.saida) warn.push("sem saída (⚑)");
-    statsEl.innerHTML = `${m.linhas[0].length}×${m.linhas.length} · tile ${m.tile}px${parts.length ? " · " + parts.join(" · ") : ""}` +
+    // plataforma termina numa saída; no top-down a fase pode acabar por porta/NPC/objetivo
+    if (m.estilo !== "topdown" && !count.saida) warn.push("sem saída (⚑)");
+    const portasSemDestino = Object.entries(m.legenda).some(([ch, d]) => d.tipo === "porta" && !d.destino && m.linhas.some((l) => l.includes(ch)));
+    if (portasSemDestino) warn.push("porta sem destino");
+    const estiloTxt = m.estilo === "topdown" ? "🧭 top-down" : "🏃 plataforma";
+    statsEl.innerHTML = `${estiloTxt} · ${m.linhas[0].length}×${m.linhas.length} · tile ${m.tile}px${parts.length ? " · " + parts.join(" · ") : ""}` +
       (warn.length ? ` <span class="map-warn">⚠ ${warn.join(", ")}</span>` : "");
   }
 

@@ -352,6 +352,18 @@ values (
 )
 on conflict (version) do nothing;
 
+-- v7: mapas top-down/RPG e IA que ajuda a editar o mapa do aluno.
+insert into update_logs (version, title, content)
+values (
+  'v7',
+  '🧭 Mapas top-down/RPG + IA que ajuda no seu mapa',
+  '- **Mapas vistos de cima** (RPG, aventura, tipo Undertale/Zelda): piso, paredes em 3D, água, árvores, pedras, flores, **NPCs** e **portas** que levam pra outros mapas. Escolha o estilo ao criar o mapa.
+- **A IA ajuda no SEU mapa**: o que você pinta vai pra IA, e dá pra pedir "coloca mais inimigos na vila" ou "aumenta a fase" — ela edita por cima do que você fez.
+- Não gostou do que a IA mudou? Na aba Mapas tem **Desfazer mudança da IA**.
+- A IA voltou a caprichar no visual do cenário (fundo, decoração, cores no tema do jogo).'
+)
+on conflict (version) do nothing;
+
 -- Dica: para transformar um usuário em "banca" ou "admin" depois do
 -- cadastro, rode manualmente (uma vez, com o e-mail da pessoa):
 --   update profiles set role = 'banca' where email = 'avaliador@escola.com';

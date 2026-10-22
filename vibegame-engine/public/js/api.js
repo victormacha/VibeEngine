@@ -277,10 +277,42 @@ function sliceAssignedObjects(html, prefix) {
       }
     }
     if (depth !== 0) continue;
-    out.push({ name, raw: html.slice(start, i) });
+    out.push({ name, raw: html.slice(start, i), start, end: i });
     assignRe.lastIndex = i;
   }
   return out;
+}
+
+// Escreve um mapa como objeto literal legível (uma linha do mapa por linha
+// de código) — é assim que ele volta pro código do jogo.
+export function serializeMap(map) {
+  const legenda = Object.entries(map.legenda || {})
+    .map(([ch, def]) => `    ${JSON.stringify(ch)}: ${JSON.stringify(def)}`)
+    .join(",\n");
+  const linhas = (map.linhas || []).map((l) => `    ${JSON.stringify(l)}`).join(",\n");
+  return `{\n  estilo: ${JSON.stringify(map.estilo === "topdown" ? "topdown" : "plataforma")},\n  tile: ${Number(map.tile) || 32},\n  legenda: {\n${legenda}\n  },\n  linhas: [\n${linhas}\n  ]\n}`;
+}
+
+// Mapa e código sempre em sincronia: troca, dentro do código do jogo, cada
+// `MAPAS.nome = {...}` pela versão ATUAL do mapa (com as edições do aluno na
+// aba Mapas). Assim, quando o aluno pede ajuda pra IA, ela lê e edita o mapa
+// do jeito que ele está agora — não uma versão antiga.
+export function syncMapsIntoCode(code, maps) {
+  if (!code || !maps) return code;
+  const found = sliceAssignedObjects(code, "MAPAS");
+  let out = code;
+  // de trás pra frente, pra os índices dos trechos anteriores continuarem valendo
+  for (let k = found.length - 1; k >= 0; k--) {
+    const { name, start, end } = found[k];
+    if (!maps[name]) continue;
+    out = out.slice(0, start) + serializeMap(maps[name]) + out.slice(end);
+  }
+  return out;
+}
+
+// Nomes dos mapas que existem no código do jogo.
+export function mapNamesInCode(code) {
+  return code ? sliceAssignedObjects(code, "MAPAS").map((o) => o.name) : [];
 }
 
 // Converte um objeto literal JS "simples" (chaves sem aspas, aspas simples,
@@ -325,7 +357,12 @@ function extractEmbeddedMaps(html) {
     try {
       const parsed = JSON.parse(looseObjectToJson(raw));
       if (parsed && Array.isArray(parsed.linhas) && parsed.linhas.length && parsed.linhas.every((l) => typeof l === "string")) {
-        maps[name] = { tile: Number(parsed.tile || parsed.tamanho) || 32, legenda: parsed.legenda || {}, linhas: parsed.linhas };
+        maps[name] = {
+          estilo: parsed.estilo === "topdown" ? "topdown" : "plataforma",
+          tile: Number(parsed.tile || parsed.tamanho) || 32,
+          legenda: parsed.legenda || {},
+          linhas: parsed.linhas,
+        };
       }
     } catch {
       // mapa que não virou JSON — ignora só ele
@@ -338,21 +375,37 @@ function extractEmbeddedMaps(html) {
 // então é rápido e barato. Devolve { tile, legenda, linhas } já limpo:
 // linhas do tamanho pedido, caracteres fora da legenda viram vazio e no
 // máximo um jogador.
-export async function generateMapWithAI({ descricao, cols, rows, legenda, tile, genero, lore }) {
+export async function generateMapWithAI({ descricao, cols, rows, legenda, tile, genero, lore, estilo, outrosMapas }) {
+  const topdown = estilo === "topdown";
   const legendaTxt = Object.entries(legenda)
-    .map(([ch, d]) => `"${ch}" = ${d.tipo}${d.nome ? ` (${d.nome})` : ""}`)
+    .map(([ch, d]) => `"${ch}" = ${d.tipo}${d.nome ? ` (${d.nome})` : ""}${d.forma ? ` [${d.forma}]` : ""}`)
     .join("\n");
+  const regras = topdown
+    ? "Mapa TOP-DOWN (visto de cima, estilo Zelda/Pokémon/Undertale), sem gravidade. Regras: " +
+      "TODA célula andável é um tile de piso (nunca deixe \".\" dentro da área jogável — \".\" é fora do mapa); " +
+      "a borda do mapa é fechada (parede, árvores, água ou pedras); crie ÁREAS com identidade (sala, praça, " +
+      "corredor, clareira, lago) ligadas por caminhos de 2-3 tiles de largura; use pisos diferentes pra marcar " +
+      "caminhos; agrupe obstáculos de forma natural (bosques, muros de casas com porta, margem de lago) em vez de " +
+      "espalhar aleatório; NPCs em lugares que fazem sentido (porta de casa, praça), com espaço livre em volta; " +
+      "portas encostadas numa parede ou na borda; itens recompensam explorar cantos; inimigos em áreas abertas; " +
+      "o jogador começa num lugar seguro e tudo é alcançável a pé."
+    : "Mapa de PLATAFORMA (visto de lado, com gravidade e pulo). Regras: a fase é uma sequência de TRECHOS " +
+      "(começo seguro e plano → primeiro pulo fácil → trecho com itens → inimigo → plataformas suspensas → " +
+      "trecho vertical com mola ou escada → checkpoint no meio → trecho mais difícil → saída); chão com 2-3 linhas " +
+      "de espessura e degraus de 1-2 tiles de altura (nunca um chão reto e chato a fase toda); buracos de 2-3 " +
+      "tiles; plataformas de 3-6 tiles a 2-3 tiles acima do que está embaixo; todo pulo necessário com no " +
+      "máximo 3 de altura e 4 de distância; itens em arco por cima dos pulos ou marcando caminhos opcionais; " +
+      "jogador em pé sobre o chão, saída alcançável no fim (à direita).";
   const system =
-    "Você é um level designer de jogos 2D. Responda SOMENTE com um objeto JSON " +
-    '{"linhas": [...]} — nada de texto antes ou depois, nada de markdown. ' +
-    "Cada item de linhas é uma string; cada caractere é uma célula do mapa; \".\" = vazio. " +
-    "Use apenas os caracteres da legenda informada. Regras de bom design: o jogador (tipo jogador) " +
-    "aparece exatamente uma vez, em pé sobre algo sólido; a saída é alcançável; todo pulo necessário " +
-    "cabe em no máximo 3 tiles de altura e 4 de distância; dificuldade crescente da esquerda pra direita; " +
-    "itens recompensam caminhos opcionais; perigos e inimigos com espaço pra reagir; nada de áreas " +
-    "impossíveis ou presas. Em jogos de plataforma, a linha de baixo é chão com alguns buracos.";
+    "Você é um level designer experiente de jogos 2D. Responda SOMENTE com um objeto JSON " +
+    '{"plano": "...", "linhas": [...]} — nada de texto antes ou depois, nada de markdown. ' +
+    "Em \"plano\", descreva em 2-4 frases curtas o layout (áreas/trechos, da esquerda pra direita e de cima " +
+    "pra baixo) ANTES de desenhar; depois desenhe seguindo esse plano. Cada item de linhas é uma string; " +
+    "cada caractere é uma célula; \".\" = vazio. Use apenas os caracteres da legenda. Todas as linhas com " +
+    "EXATAMENTE o número de colunas pedido. O jogador (tipo jogador) aparece exatamente uma vez. " + regras;
   const message =
-    `Gênero: ${genero || "plataforma"}.\n` +
+    `Gênero do jogo: ${genero || (topdown ? "aventura/RPG" : "plataforma")}.\n` +
+    (outrosMapas?.length ? `Outros mapas do jogo (portas podem levar pra eles): ${outrosMapas.join(", ")}.\n` : "") +
     `Tamanho: EXATAMENTE ${cols} colunas (caracteres por linha) e ${rows} linhas.\n` +
     `Legenda:\n${legendaTxt}\n` +
     (lore ? `Contexto da história: ${lore.slice(0, 600)}\n` : "") +
@@ -385,7 +438,14 @@ export async function generateMapWithAI({ descricao, cols, rows, legenda, tile, 
       return ch;
     }).join("");
   });
-  return { tile, legenda, linhas };
+  // Top-down: "." no meio do mapa quase sempre era pra ser chão — vira o piso mais usado.
+  if (topdown) {
+    const count = {};
+    linhas.forEach((l) => { for (const ch of l) if (legenda[ch]?.tipo === "piso") count[ch] = (count[ch] || 0) + 1; });
+    const piso = Object.keys(count).sort((a, b) => count[b] - count[a])[0] || Object.keys(legenda).find((c) => legenda[c].tipo === "piso");
+    if (piso) for (let y = 0; y < linhas.length; y++) linhas[y] = linhas[y].split(".").join(piso);
+  }
+  return { estilo: topdown ? "topdown" : "plataforma", tile, legenda, linhas };
 }
 
 // Exposto pra aba Mapas conseguir "devolver pra IA": relê a versão do mapa
