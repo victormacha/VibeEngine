@@ -339,28 +339,17 @@ values (
 )
 on conflict (version) do nothing;
 
--- v6: editor de mapas turbinado.
+-- v6: mapas turbinados, mapas top-down/RPG e IA que ajuda a editar o mapa do aluno.
 insert into update_logs (version, title, content)
 values (
   'v6',
-  '🧱 Mapas turbinados',
-  '- **Visual novo**: grama no topo, bordas, sombras, tijolos e espinhos animados — o editor mostra igual ao jogo.
-- **Tiles novos**: escada, mola, bloco quebrável e checkpoint.
-- **Ferramentas novas**: linha, conta-gotas, seleção com copiar/recortar/colar, pincel maior, zoom com Ctrl+roda e Espaço+arrastar pra mover a tela.
+  '🗺️ Mapas turbinados: top-down/RPG + IA que ajuda no seu mapa',
+  '- **Mapas vistos de cima** (RPG, aventura, tipo Undertale/Zelda): piso, paredes em 3D, água, árvores, pedras, flores, **NPCs** e **portas** que levam pra outros mapas. Escolha o estilo (plataforma ou top-down) ao criar o mapa.
+- **Visual novo**: grama no topo, bordas, sombras, tijolos e água animada — o editor mostra igual ao jogo.
+- **Tiles novos** no estilo plataforma: escada, mola, bloco quebrável e checkpoint.
+- **Ferramentas novas**: linha, conta-gotas, seleção com copiar/recortar/colar, pincel maior, zoom com Ctrl+roda e Espaço+arrastar pra mover a tela. Dá pra duplicar e renomear mapas e usar seus sprites como tile.
 - **✨ Gerar com IA**: descreva a fase e a IA monta o mapa pra você ajustar.
-- Duplicar e renomear mapas, usar seus sprites como tile e ▶ Testar direto do editor.'
-)
-on conflict (version) do nothing;
-
--- v7: mapas top-down/RPG e IA que ajuda a editar o mapa do aluno.
-insert into update_logs (version, title, content)
-values (
-  'v7',
-  '🧭 Mapas top-down/RPG + IA que ajuda no seu mapa',
-  '- **Mapas vistos de cima** (RPG, aventura, tipo Undertale/Zelda): piso, paredes em 3D, água, árvores, pedras, flores, **NPCs** e **portas** que levam pra outros mapas. Escolha o estilo ao criar o mapa.
-- **A IA ajuda no SEU mapa**: o que você pinta vai pra IA, e dá pra pedir "coloca mais inimigos na vila" ou "aumenta a fase" — ela edita por cima do que você fez.
-- Não gostou do que a IA mudou? Na aba Mapas tem **Desfazer mudança da IA**.
-- A IA voltou a caprichar no visual do cenário (fundo, decoração, cores no tema do jogo).'
+- **A IA ajuda no SEU mapa**: o que você pinta vai pra IA, e dá pra pedir "coloca mais inimigos na vila" ou "aumenta a fase" — ela edita por cima do que você fez. Não gostou? Na aba Mapas tem **Desfazer mudança da IA**.'
 )
 on conflict (version) do nothing;
 
