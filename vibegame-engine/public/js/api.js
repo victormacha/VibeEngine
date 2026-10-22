@@ -334,6 +334,60 @@ function extractEmbeddedMaps(html) {
   return maps;
 }
 
+// "✨ Gerar fase com IA" da aba Mapas: pede SÓ o mapa (sem jogo inteiro),
+// então é rápido e barato. Devolve { tile, legenda, linhas } já limpo:
+// linhas do tamanho pedido, caracteres fora da legenda viram vazio e no
+// máximo um jogador.
+export async function generateMapWithAI({ descricao, cols, rows, legenda, tile, genero, lore }) {
+  const legendaTxt = Object.entries(legenda)
+    .map(([ch, d]) => `"${ch}" = ${d.tipo}${d.nome ? ` (${d.nome})` : ""}`)
+    .join("\n");
+  const system =
+    "Você é um level designer de jogos 2D. Responda SOMENTE com um objeto JSON " +
+    '{"linhas": [...]} — nada de texto antes ou depois, nada de markdown. ' +
+    "Cada item de linhas é uma string; cada caractere é uma célula do mapa; \".\" = vazio. " +
+    "Use apenas os caracteres da legenda informada. Regras de bom design: o jogador (tipo jogador) " +
+    "aparece exatamente uma vez, em pé sobre algo sólido; a saída é alcançável; todo pulo necessário " +
+    "cabe em no máximo 3 tiles de altura e 4 de distância; dificuldade crescente da esquerda pra direita; " +
+    "itens recompensam caminhos opcionais; perigos e inimigos com espaço pra reagir; nada de áreas " +
+    "impossíveis ou presas. Em jogos de plataforma, a linha de baixo é chão com alguns buracos.";
+  const message =
+    `Gênero: ${genero || "plataforma"}.\n` +
+    `Tamanho: EXATAMENTE ${cols} colunas (caracteres por linha) e ${rows} linhas.\n` +
+    `Legenda:\n${legendaTxt}\n` +
+    (lore ? `Contexto da história: ${lore.slice(0, 600)}\n` : "") +
+    `Pedido do aluno: ${descricao || "uma fase divertida e equilibrada"}`;
+  const text = await callAIRaw({ system, history: [], message });
+
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end <= start) throw new Error("A IA não devolveu um mapa válido. Tente de novo.");
+  let parsed;
+  try {
+    parsed = JSON.parse(looseObjectToJson(text.slice(start, end + 1)));
+  } catch {
+    throw new Error("A IA devolveu um mapa quebrado. Tente de novo (às vezes ajuda simplificar o pedido).");
+  }
+  const raw = Array.isArray(parsed?.linhas) ? parsed.linhas.map(String) : [];
+  if (!raw.length) throw new Error("A IA não devolveu nenhuma linha de mapa. Tente de novo.");
+
+  let jogadorVisto = false;
+  const linhas = Array.from({ length: rows }, (_, y) => {
+    // se vier menos linhas, completa EM CIMA (o chão fica embaixo)
+    const src = raw[raw.length - rows + y] ?? "";
+    return Array.from({ length: cols }, (_, x) => {
+      const ch = src[x] || ".";
+      if (!legenda[ch]) return ".";
+      if (legenda[ch].tipo === "jogador") {
+        if (jogadorVisto) return ".";
+        jogadorVisto = true;
+      }
+      return ch;
+    }).join("");
+  });
+  return { tile, legenda, linhas };
+}
+
 // Exposto pra aba Mapas conseguir "devolver pra IA": relê a versão do mapa
 // que está no código atual do jogo.
 export { extractEmbeddedMaps }

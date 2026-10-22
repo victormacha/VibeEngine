@@ -112,7 +112,9 @@ function renderShell() {
         },
       }) },
     { id: "personagens", icon: "🎨", label: "Personagens", mount: (panel) => (pixelTabApi = mountPixelEditorTab(panel)) },
-    { id: "mapas", icon: "🗺️", label: "Mapas", mount: (panel) => (mapTabApi = mountMapEditorTab(panel)) },
+    { id: "mapas", icon: "🗺️", label: "Mapas", mount: (panel) => (mapTabApi = mountMapEditorTab(panel, {
+        onPlay: () => root.querySelector('.tab-btn[data-tab="testar"]')?.click(),
+      })) },
     { id: "mecanicas", icon: "⚙️", label: "Mecânicas", mount: mountMechanicsTab },
     { id: "lore", icon: "📜", label: "Lore", mount: mountLoreTab },
     { id: "perfil", icon: "🙍", label: "Perfil", mount: (panel) => mountPerfilTab(panel, { onProjectChanged: () => testTabApi?.render() }) },

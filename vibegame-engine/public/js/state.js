@@ -76,22 +76,30 @@ export const state = {
 export const MAP_TILE_TYPES = [
   { id: "solido", label: "Sólido (chão/parede)" },
   { id: "plataforma", label: "Plataforma (pousa por cima)" },
+  { id: "quebravel", label: "Quebrável (bloco que quebra)" },
+  { id: "mola", label: "Mola (joga pra cima)" },
+  { id: "escada", label: "Escada (sobe e desce)" },
   { id: "perigo", label: "Perigo (espinho/lava)" },
   { id: "item", label: "Item (coletável)" },
   { id: "inimigo", label: "Inimigo (nasce aqui)" },
   { id: "jogador", label: "Jogador (começa aqui)" },
+  { id: "checkpoint", label: "Checkpoint (respawn)" },
   { id: "saida", label: "Saída (fim da fase)" },
   { id: "decoracao", label: "Decoração (sem colisão)" },
 ];
 
 // Legenda inicial de um mapa criado do zero na aba Mapas.
 export const DEFAULT_MAP_LEGEND = {
-  "#": { tipo: "solido", cor: "#6b4a2f" },
+  "#": { tipo: "solido", cor: "#7a5230", topo: "#4caf50" },
   "=": { tipo: "plataforma", cor: "#9c6b3c" },
+  "B": { tipo: "quebravel", cor: "#b5651d" },
+  "M": { tipo: "mola", cor: "#ff7043" },
+  "H": { tipo: "escada", cor: "#c8a165" },
   "^": { tipo: "perigo", cor: "#e04848" },
   "o": { tipo: "item", cor: "#ffd23f", nome: "moeda" },
   "E": { tipo: "inimigo", cor: "#c0392b", nome: "inimigo" },
   "P": { tipo: "jogador", cor: "#3fa7ff" },
+  "C": { tipo: "checkpoint", cor: "#29b6f6" },
   "F": { tipo: "saida", cor: "#2ecc71" },
   "~": { tipo: "decoracao", cor: "#3b5b7a" },
 };

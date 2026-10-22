@@ -1,3 +1,5 @@
+import { drawMapTile, sameBlock } from "./mapRender.js";
+
 // Junta o código gerado pela IA com o que o aluno controla manualmente:
 // os sprites desenhados na aba Personagens e a configuração da aba
 // Mecânicas. Injeta os dois como globals ANTES do script da IA rodar,
@@ -276,8 +278,12 @@ window.Vibe = (function () {
           entity.onGround = false;
         }
 
+        // Impulso de mola (Vibe.moveAndCollide marca entity.bounced): não
+        // corta a subida só porque o botão de pulo não está apertado.
+        if (entity.bounced) this._spring = true;
+        if (entity.vy >= 0) this._spring = false;
         var g = this.gravity;
-        if (entity.vy < 0 && !jumpHeld) g *= this.lowJumpMultiplier; // soltou cedo: corta o pulo
+        if (entity.vy < 0 && !jumpHeld && !this._spring) g *= this.lowJumpMultiplier; // soltou cedo: corta o pulo
         else if (entity.vy > 0) g *= this.fallMultiplier; // caindo: acelera mais que a subida
         entity.vy += g * dt * 60; // mesma normalização de applyGravity — CFG é calibrado por frame
       },
@@ -445,16 +451,21 @@ window.Vibe = (function () {
   //     linhas: ["..........", "....o.....", "##########"] }
   // Cada caractere de "linhas" é uma célula; "." (ou espaço) = vazio. O tipo
   // de cada caractere vem da legenda:
-  //   solido     — chão/parede: bloqueia por todos os lados
+  //   solido     — chão/parede: bloqueia por todos os lados ("topo": cor da grama)
+  //   quebravel  — igual sólido, mas o jogo pode quebrar (mundo.breakTile)
   //   plataforma — só dá pra pousar por cima (atravessa pulando por baixo)
+  //   mola       — bloqueia e, ao pisar, joga pra cima ("forca", padrão 18)
+  //   escada     — sem colisão; mundo.onLadder(entidade) diz se dá pra subir
   //   perigo     — espinho/lava: o jogo decide o que acontece ao encostar
-  //   item       — ponto onde nasce um coletável (não é desenhado pelo mapa)
-  //   inimigo    — ponto onde nasce um inimigo (não é desenhado pelo mapa)
-  //   jogador    — onde o jogador começa (não é desenhado pelo mapa)
-  //   saida      — porta/bandeira de fim de fase
+  //   item / inimigo / jogador — pontos de nascimento (não são desenhados)
+  //   checkpoint — bandeirinha de respawn
+  //   saida      — bandeira de fim de fase
   //   decoracao  — só visual, sem colisão
   // Caractere que não está na legenda conta como "solido".
-  var MAP_TIPOS_DESENHADOS = { solido: 1, plataforma: 1, perigo: 1, saida: 1, decoracao: 1 };
+  var drawMapTile = ${drawMapTile.toString()};
+  var sameBlock = ${sameBlock.toString()};
+  var MAP_SOLIDO = { solido: 1, quebravel: 1, mola: 1 };
+  var MAP_SPAWN = { item: 1, inimigo: 1, jogador: 1 };
 
   function loadMap(map) {
     map = map || {};
@@ -463,106 +474,115 @@ window.Vibe = (function () {
     var legenda = map.legenda || {};
     var rows = linhas.length, cols = 0;
     for (var r = 0; r < rows; r++) cols = Math.max(cols, (linhas[r] || "").length);
-    var solidGrid = new Uint8Array(cols * rows);
-    var platGrid = new Uint8Array(cols * rows);
+    // grade de caracteres própria do mundo (pode mudar: breakTile/setTile)
+    var chars = [];
+    for (var r2 = 0; r2 < rows; r2++) {
+      var row = [];
+      for (var c2 = 0; c2 < cols; c2++) {
+        var ch0 = (linhas[r2] || "")[c2] || ".";
+        row.push(ch0 === " " ? "." : ch0);
+      }
+      chars.push(row);
+    }
+    function defOf(ch) { return legenda[ch] || { tipo: "solido", cor: "#666666" }; }
+    function tipoAt(col, row) {
+      if (row < 0 || row >= rows || col < 0 || col >= cols) return null;
+      var ch = chars[row][col];
+      return ch === "." ? null : (defOf(ch).tipo || "solido");
+    }
+    function cellAt(col, row) {
+      var ch = chars[row][col], def = defOf(ch);
+      return { x: col * T, y: row * T, width: T, height: T, col: col, row: row, char: ch, tipo: def.tipo || "solido", nome: def.nome || def.tipo || "solido", def: def };
+    }
+
     var world = {
       tile: T, cols: cols, rows: rows, width: cols * T, height: rows * T,
-      jogador: null, itens: [], inimigos: [], perigos: [], saidas: [],
-      solidos: [], plataformas: [], decoracoes: [], tiles: [],
+      jogador: null, itens: [], inimigos: [], perigos: [], saidas: [], checkpoints: [],
+      escadas: [], molas: [], quebraveis: [], plataformas: [], decoracoes: [],
     };
     for (var y = 0; y < rows; y++) {
-      var linha = linhas[y] || "";
-      for (var x = 0; x < linha.length; x++) {
-        var ch = linha[x];
-        if (ch === "." || ch === " ") continue;
-        var def = legenda[ch] || { tipo: "solido", cor: "#666666" };
-        var cell = {
-          x: x * T, y: y * T, width: T, height: T, col: x, row: y,
-          char: ch, tipo: def.tipo || "solido", nome: def.nome || def.tipo || "solido", def: def,
-        };
-        if (cell.tipo === "solido") { solidGrid[y * cols + x] = 1; world.solidos.push(cell); }
-        else if (cell.tipo === "plataforma") { platGrid[y * cols + x] = 1; world.plataformas.push(cell); }
-        else if (cell.tipo === "perigo") world.perigos.push(cell);
-        else if (cell.tipo === "item") world.itens.push(cell);
-        else if (cell.tipo === "inimigo") world.inimigos.push(cell);
-        else if (cell.tipo === "jogador") { if (!world.jogador) world.jogador = cell; }
-        else if (cell.tipo === "saida") world.saidas.push(cell);
-        else world.decoracoes.push(cell);
-        if (MAP_TIPOS_DESENHADOS[cell.tipo]) world.tiles.push(cell);
+      for (var x = 0; x < cols; x++) {
+        var tp = tipoAt(x, y);
+        if (!tp) continue;
+        var cell = cellAt(x, y);
+        if (tp === "jogador") { if (!world.jogador) world.jogador = cell; }
+        else if (tp === "item") world.itens.push(cell);
+        else if (tp === "inimigo") world.inimigos.push(cell);
+        else if (tp === "perigo") world.perigos.push(cell);
+        else if (tp === "saida") world.saidas.push(cell);
+        else if (tp === "checkpoint") world.checkpoints.push(cell);
+        else if (tp === "escada") world.escadas.push(cell);
+        else if (tp === "mola") world.molas.push(cell);
+        else if (tp === "quebravel") world.quebraveis.push(cell);
+        else if (tp === "plataforma") world.plataformas.push(cell);
+        else if (tp === "decoracao") world.decoracoes.push(cell);
       }
     }
 
+    world.tipoAt = tipoAt;
     world.isSolid = function (col, row) {
       if (col < 0 || col >= cols) return true;   // bordas laterais do mapa são parede
-      if (row < 0) return false;                 // acima do mapa: livre (dá pra pular alto)
-      if (row >= rows) return false;             // abaixo: buraco (o jogo trata a queda)
-      return solidGrid[row * cols + col] === 1;
+      if (row < 0 || row >= rows) return false;  // acima: livre; abaixo: buraco
+      return !!MAP_SOLIDO[tipoAt(col, row)];
     };
-    world.isPlatform = function (col, row) {
-      if (col < 0 || col >= cols || row < 0 || row >= rows) return false;
-      return platGrid[row * cols + col] === 1;
-    };
+    world.isPlatform = function (col, row) { return tipoAt(col, row) === "plataforma"; };
     world.solidAt = function (px, py) { return world.isSolid(Math.floor(px / T), Math.floor(py / T)); };
+    world.cellAtPixel = function (px, py) {
+      var col = Math.floor(px / T), row = Math.floor(py / T);
+      return tipoAt(col, row) ? cellAt(col, row) : null;
+    };
+    // Troca o caractere de uma célula em tempo de jogo (ex.: quebrar bloco,
+    // abrir passagem). "." = esvaziar. A colisão e o desenho já usam o novo.
+    world.setTile = function (col, row, ch) {
+      if (row < 0 || row >= rows || col < 0 || col >= cols) return;
+      chars[row][col] = ch || ".";
+    };
+    world.breakTile = function (col, row) { world.setTile(col, row, "."); };
+    // true se o centro da entidade está numa escada (pra subir/descer).
+    world.onLadder = function (e) {
+      var cx = Math.floor((e.x + e.width / 2) / T);
+      var top = Math.floor(e.y / T), bottom = Math.floor((e.y + e.height - 1) / T);
+      for (var rr = top; rr <= bottom; rr++) if (tipoAt(cx, rr) === "escada") return true;
+      return false;
+    };
 
-    // Desenha os tiles visíveis (com câmera, só o que está na tela). Se a
-    // legenda tiver "sprite: "nome"", usa esse sprite de SPR; senão, a cor.
+    // Desenha os tiles visíveis (com câmera, só o que está na tela), com o
+    // mesmo visual da aba Mapas. Se a legenda tiver sprite: "nome", usa esse
+    // sprite de SPR no lugar do desenho padrão.
     world.draw = function (ctx, nowMs, cam) {
       var sprites = window.VIBE_SPRITES || {};
-      var vx0 = cam ? cam.x - T : -Infinity, vx1 = cam ? cam.x + cam.canvasWidth + T : Infinity;
-      var vy0 = cam ? cam.y - T : -Infinity, vy1 = cam ? cam.y + cam.canvasHeight + T : Infinity;
-      for (var i = 0; i < world.tiles.length; i++) {
-        var t = world.tiles[i];
-        if (t.x < vx0 || t.x > vx1 || t.y < vy0 || t.y > vy1) continue;
-        var spr = t.def.sprite && sprites[t.def.sprite];
-        if (spr) { drawSprite(ctx, spr, "idle", nowMs || 0, t.x, t.y, T, T); continue; }
-        drawTile(ctx, t, T);
+      var c0 = 0, c1 = cols - 1, r0 = 0, r1 = rows - 1;
+      if (cam) {
+        c0 = Math.max(0, Math.floor(cam.x / T) - 1); c1 = Math.min(cols - 1, Math.ceil((cam.x + cam.canvasWidth) / T) + 1);
+        r0 = Math.max(0, Math.floor(cam.y / T) - 1); r1 = Math.min(rows - 1, Math.ceil((cam.y + cam.canvasHeight) / T) + 1);
+      }
+      for (var yy = r0; yy <= r1; yy++) {
+        for (var xx = c0; xx <= c1; xx++) {
+          var t = tipoAt(xx, yy);
+          if (!t || MAP_SPAWN[t]) continue;
+          var cl = cellAt(xx, yy);
+          var spr = cl.def.sprite && sprites[cl.def.sprite];
+          if (spr) { drawSprite(ctx, spr, "idle", nowMs || 0, cl.x, cl.y, T, T); continue; }
+          drawMapTile(ctx, cl, T, {
+            up: sameBlock(t, tipoAt(xx, yy - 1)), down: sameBlock(t, tipoAt(xx, yy + 1)),
+            left: sameBlock(t, tipoAt(xx - 1, yy)), right: sameBlock(t, tipoAt(xx + 1, yy)),
+          }, nowMs || 0);
+        }
       }
     };
     return world;
   }
 
-  function shade(hex, amount) {
-    var m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
-    if (!m) return hex;
-    var n = parseInt(m[1], 16);
-    var r = clamp((n >> 16) + amount, 0, 255), g = clamp(((n >> 8) & 255) + amount, 0, 255), b = clamp((n & 255) + amount, 0, 255);
-    return "rgb(" + r + "," + g + "," + b + ")";
-  }
-
-  function drawTile(ctx, t, T) {
-    var cor = t.def.cor || "#777777";
-    if (t.tipo === "plataforma") {
-      var h = Math.max(4, Math.round(T / 3));
-      ctx.fillStyle = cor; ctx.fillRect(t.x, t.y, T, h);
-      ctx.fillStyle = shade(cor, 40); ctx.fillRect(t.x, t.y, T, 2);
-      ctx.fillStyle = shade(cor, -40); ctx.fillRect(t.x, t.y + h - 2, T, 2);
-    } else if (t.tipo === "perigo") {
-      ctx.fillStyle = cor;
-      var n = 3, w = T / n;
-      ctx.beginPath();
-      for (var k = 0; k < n; k++) {
-        ctx.moveTo(t.x + k * w, t.y + T);
-        ctx.lineTo(t.x + k * w + w / 2, t.y + T * 0.35);
-        ctx.lineTo(t.x + (k + 1) * w, t.y + T);
-      }
-      ctx.fill();
-    } else if (t.tipo === "saida") {
-      ctx.fillStyle = shade(cor, -50); ctx.fillRect(t.x + T * 0.15, t.y, T * 0.1, T);
-      ctx.fillStyle = cor; ctx.fillRect(t.x + T * 0.25, t.y + T * 0.08, T * 0.6, T * 0.4);
-    } else {
-      ctx.fillStyle = cor; ctx.fillRect(t.x, t.y, T, T);
-      if (t.tipo === "solido") {
-        ctx.fillStyle = shade(cor, 35); ctx.fillRect(t.x, t.y, T, 3);
-        ctx.fillStyle = shade(cor, -30); ctx.fillRect(t.x, t.y + T - 2, T, 2);
-      }
-    }
-  }
-
   // Move uma entidade {x,y,width,height} por (dx, dy) pixels respeitando o
-  // mapa: paredes/chão sólidos bloqueiam por todos os lados, plataformas só
-  // por cima. Resolve X e Y separados (é o que deixa deslizar encostado na
-  // parede sem travar). Atualiza entity.onGround (pisou em algo neste
-  // frame), entity.hitWall, entity.hitCeiling e zera vx/vy no eixo bloqueado.
+  // mapa: blocos sólidos bloqueiam por todos os lados, plataformas só por
+  // cima. Resolve X e Y separados (é o que deixa deslizar encostado na
+  // parede sem travar). Depois da chamada:
+  //   entity.onGround   — pisou em algo neste frame
+  //   entity.hitWall    — bateu de lado
+  //   entity.hitCeiling — bateu a cabeça
+  //   entity.groundTile — célula onde pisou ({col,row,tipo,char,...}) ou null
+  //   entity.headTile   — célula onde bateu a cabeça (ex.: quebrar bloco por baixo)
+  //   entity.bounced    — pisou numa mola (vy já foi jogado pra cima)
   // É A ÚNICA função de colisão necessária num jogo com mapa — não misture
   // com groundCollide/platformsCollide pra mesma entidade.
   function moveAndCollide(entity, dx, dy, world) {
@@ -571,6 +591,9 @@ window.Vibe = (function () {
     entity.onGround = false;
     entity.hitWall = false;
     entity.hitCeiling = false;
+    entity.groundTile = null;
+    entity.headTile = null;
+    entity.bounced = false;
 
     // ---- eixo X ----
     entity.x += dx;
@@ -595,12 +618,13 @@ window.Vibe = (function () {
       var rowB = Math.floor((entity.y + entity.height - EPS) / T);
       var top = rowB * T;
       for (var c = c0; c <= c1; c++) {
-        var solid = world.isSolid(c, rowB) && rowB >= 0;
+        var solid = rowB >= 0 && world.isSolid(c, rowB);
         var plat = !solid && world.isPlatform(c, rowB) && prevBottom <= top + 1;
         if (solid || plat) {
           entity.y = top - entity.height;
           entity.vy = 0;
           entity.onGround = true;
+          entity.groundTile = c >= 0 && c < world.cols ? world.cellAtPixel(c * T + 1, top + 1) : null;
           break;
         }
       }
@@ -611,6 +635,7 @@ window.Vibe = (function () {
           entity.y = (rowT + 1) * T;
           entity.vy = 0;
           entity.hitCeiling = true;
+          entity.headTile = c2 >= 0 && c2 < world.cols ? world.cellAtPixel(c2 * T + 1, rowT * T + 1) : null;
           break;
         }
       }
@@ -622,17 +647,27 @@ window.Vibe = (function () {
       var below = Math.round(feet / T);
       if (Math.abs(feet - below * T) < 0.5) {
         for (var c3 = c0; c3 <= c1; c3++) {
-          if ((below >= 0 && world.isSolid(c3, below)) || world.isPlatform(c3, below)) { entity.onGround = true; break; }
+          if ((below >= 0 && world.isSolid(c3, below)) || world.isPlatform(c3, below)) {
+            entity.onGround = true;
+            if (c3 >= 0 && c3 < world.cols) entity.groundTile = world.cellAtPixel(c3 * T + 1, below * T + 1);
+            break;
+          }
         }
       }
+    }
+    // Mola: pisou, é arremessado pra cima (força na legenda, padrão 18).
+    if (entity.groundTile && entity.groundTile.tipo === "mola") {
+      entity.vy = -(entity.groundTile.def.forca || 18);
+      entity.onGround = false;
+      entity.bounced = true;
     }
     entity._vibePrevBottom = entity.y + entity.height;
     return entity;
   }
 
   // Põe uma entidade em cima de uma célula do mapa (ex.: mundo.jogador,
-  // um item de mundo.itens): centralizada na horizontal e com o "pé"
-  // encostado no fundo da célula. Zera velocidade (igual placeEntity).
+  // um checkpoint, um item de mundo.itens): centralizada na horizontal e com
+  // o "pé" encostado no fundo da célula. Zera velocidade (igual placeEntity).
   function placeOnTile(entity, cell) {
     placeEntity(entity, cell.x + (cell.width - entity.width) / 2, cell.y + cell.height - entity.height);
   }

@@ -339,6 +339,19 @@ values (
 )
 on conflict (version) do nothing;
 
+-- v6: editor de mapas turbinado.
+insert into update_logs (version, title, content)
+values (
+  'v6',
+  '🧱 Mapas turbinados',
+  '- **Visual novo**: grama no topo, bordas, sombras, tijolos e espinhos animados — o editor mostra igual ao jogo.
+- **Tiles novos**: escada, mola, bloco quebrável e checkpoint.
+- **Ferramentas novas**: linha, conta-gotas, seleção com copiar/recortar/colar, pincel maior, zoom com Ctrl+roda e Espaço+arrastar pra mover a tela.
+- **✨ Gerar com IA**: descreva a fase e a IA monta o mapa pra você ajustar.
+- Duplicar e renomear mapas, usar seus sprites como tile e ▶ Testar direto do editor.'
+)
+on conflict (version) do nothing;
+
 -- Dica: para transformar um usuário em "banca" ou "admin" depois do
 -- cadastro, rode manualmente (uma vez, com o e-mail da pessoa):
 --   update profiles set role = 'banca' where email = 'avaliador@escola.com';

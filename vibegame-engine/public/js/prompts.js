@@ -398,13 +398,23 @@ if (!MAPAS.fase1) MAPAS.fase1 = {
   ]
 };
 \`\`\`
-- Tipos válidos: solido (bloqueia por todos os lados), plataforma (só pousa
-  por cima), perigo, item, inimigo, jogador, saida, decoracao (só visual).
-  "." = vazio. Todas as linhas com o MESMO comprimento. Um "P" por mapa.
+- Tipos válidos: solido (bloqueia por todos os lados; \`topo: "#cor"\` = cor
+  da grama no topo exposto), plataforma (só pousa por cima), quebravel
+  (sólido que o jogo pode quebrar), mola (sólido que arremessa pra cima ao
+  pisar; \`forca\` opcional, padrão 18), escada (sem colisão, dá pra subir),
+  perigo, item, inimigo, jogador, checkpoint (respawn), saida, decoracao
+  (só visual). "." = vazio. Todas as linhas com o MESMO comprimento. Um "P"
+  por mapa.
+- Faça fases com VARIEDADE e ritmo: alterne trechos fáceis e desafios, use
+  molas pra alcançar áreas altas, escadas entre andares, blocos quebráveis
+  escondendo itens, um checkpoint no meio de fases longas, itens marcando
+  o caminho certo e recompensando caminhos opcionais. Todo pulo necessário
+  com no máximo 3 tiles de altura e 4 de distância.
 - Caracteres da legenda: letras, números ou um destes: # = ^ ~ * + - | / ! ?
   @ $ % & < > (nunca aspas, vírgula, chaves, dois-pontos ou barra invertida).
-- \`cor\` define a cor do tile; opcionalmente \`sprite: "nomeDoSprite"\` (de
-  SPR) desenha o tile com um sprite em vez da cor.
+- \`cor\` define a cor do tile (a engine já desenha com grama, borda, sombra,
+  tijolo, espinho etc. — não desenhe tiles na mão); opcionalmente
+  \`sprite: "nomeDoSprite"\` (de SPR) desenha o tile com um sprite.
 - Tamanho: fases de plataforma ~40-120 colunas x 12-18 linhas (com câmera);
   top-down/labirinto do tamanho da tela ou um pouco maior. tile 32 (ou 24/48).
 - Várias fases = vários mapas (MAPAS.fase1, MAPAS.fase2, ...), cada um com o
@@ -415,7 +425,8 @@ Usando o mapa no jogo (window.Vibe já tem tudo pronto):
 var mundo = Vibe.loadMap(MAPAS.fase1); // chame de novo ao reiniciar/trocar de fase
 // mundo.width / mundo.height (px), mundo.tile,
 // mundo.jogador (célula {x,y,width,height}), mundo.itens, mundo.inimigos,
-// mundo.perigos, mundo.saidas — listas de células {x,y,width,height,nome,char}
+// mundo.perigos, mundo.saidas, mundo.checkpoints, mundo.escadas, mundo.molas,
+// mundo.quebraveis — listas de células {x,y,width,height,col,row,tipo,nome,char}
 Vibe.placeOnTile(jogador, mundo.jogador);       // jogador nasce em pé no "P"
 var cam = Vibe.createCamera({ canvasWidth: canvas.width, canvasHeight: canvas.height, worldWidth: mundo.width, worldHeight: mundo.height });
 // no loop (plataforma):
@@ -426,10 +437,23 @@ Vibe.moveAndCollide(jogador, jogador.vx * dt * 60, jogador.vy * dt * 60, mundo);
 cam.apply(ctx); mundo.draw(ctx, nowMs, cam); /* itens, inimigos, jogador */ cam.restore(ctx);
 \`\`\`
 - \`Vibe.moveAndCollide(entidade, dx, dy, mundo)\` move E colide (paredes,
-  chão, teto, plataformas de mão única) e atualiza \`onGround\`, \`hitWall\`
-  e \`hitCeiling\`. Com mapa, é a ÚNICA colisão de cenário — NÃO use
-  groundCollide/platformsCollide/GROUND_Y junto. Use pra inimigos também
-  (\`hitWall\` = hora de virar na patrulha).
+  chão, teto, plataformas de mão única, molas) e atualiza \`onGround\`,
+  \`hitWall\`, \`hitCeiling\`, \`groundTile\`/\`headTile\` (célula onde pisou /
+  bateu a cabeça, com \`.tipo\`, \`.col\`, \`.row\`) e \`bounced\` (pisou numa
+  mola — o impulso já foi aplicado; toque um som). Com mapa, é a ÚNICA
+  colisão de cenário — NÃO use groundCollide/platformsCollide/GROUND_Y
+  junto. Use pra inimigos também (\`hitWall\` = hora de virar na patrulha;
+  pra não cair de beirada: \`!mundo.isSolid(colunaÀFrente, linhaAbaixoDoPé)\`).
+- Quebrável: \`if (jogador.headTile && jogador.headTile.tipo === "quebravel")
+  mundo.breakTile(jogador.headTile.col, jogador.headTile.row);\` (cabeçada por
+  baixo, com partículas), ou ao atacar. \`mundo.setTile(col, row, char)\` troca
+  qualquer célula em tempo de jogo.
+- Escada: \`if (mundo.onLadder(jogador) && (cima || baixo)) { jogador.vy =
+  (baixo ? 1 : -1) * 3; subindo = true; }\` — enquanto \`subindo\` e na escada,
+  NÃO chame jumpCtrl.update (sem gravidade); ao sair da escada ou pular,
+  \`subindo = false\`.
+- Checkpoint: ao encostar em uma célula de \`mundo.checkpoints\`, guarde ela;
+  ao morrer, \`Vibe.placeOnTile(jogador, checkpointAtual || mundo.jogador)\`.
 - Itens e inimigos: crie as entidades a partir de \`mundo.itens\`/\`mundo.inimigos\`
   (ex.: \`mundo.inimigos.map(function (c) { var e = {...}; Vibe.placeOnTile(e, c); return e; })\`)
   — o mapa marca ONDE nascem, quem desenha e anima é o seu código.
