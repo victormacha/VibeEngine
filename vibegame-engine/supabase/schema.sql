@@ -137,6 +137,9 @@ create policy "banca e admin leem todos os jogos"
   on games for select
   using (public.has_role(array['banca', 'admin']));
 
+-- v5: mapas em grade da aba Mapas ({ nome: { tile, legenda, linhas, origem } }).
+alter table games add column if not exists maps jsonb default '{}';
+
 -- 3. Notas: avaliação de um jogo por um membro da banca.
 --
 -- ATUALIZAÇÃO: cada membro da banca agora avalia de 0 A 4 (antes era
@@ -321,6 +324,18 @@ values (
   '- **Fim do erro "a resposta da IA foi cortada"**: a IA agora desenha os personagens num formato **10x mais leve**, então dá pra pedir jogos com jogador animado, inimigos e boss sem estourar o limite.
 - **Identificação**: ao entrar, informe o **seu nome** e o **seu ano (2º ou 3º)** — é assim que a banca vai te reconhecer.
 - **Contador de tempo consertado**: a aba Perfil agora mostra o seu tempo de uso de verdade, contando ao vivo (e só enquanto a engine está aberta na tela).'
+)
+on conflict (version) do nothing;
+
+-- v5: aba Mapas, lore consertada e avaliações visíveis pra toda a banca.
+insert into update_logs (version, title, content)
+values (
+  'v5',
+  '🗺️ Aba Mapas + Lore consertada',
+  '- **Nova aba Mapas**: a IA agora monta as fases como um mapa em grade — e você pode **editar pintando**: chão, plataformas, espinhos, moedas, inimigos, onde o jogador começa e a saída. Também dá pra criar um mapa do zero.
+- Depois que você edita um mapa, ele é **seu**: a IA usa a sua versão e não apaga mais. Se quiser que a IA refaça, use "Devolver pra IA".
+- **Lore consertada**: o texto não se perde mais e é salvo junto com o jogo (inclusive quando o jogo ainda não tinha sido salvo).
+- **Banca**: cada avaliador agora vê as notas e comentários dos outros, a média do jogo e a lore completa.'
 )
 on conflict (version) do nothing;
 

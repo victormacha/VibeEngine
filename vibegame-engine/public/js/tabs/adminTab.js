@@ -4,6 +4,7 @@
 import { dbQuery } from "../supabaseClient.js";
 import { state } from "../state.js";
 import { toast } from "../ui.js";
+import { escapeHtml, fetchLore, loreBlockHtml, fetchScores, scoresBlockHtml } from "../gameReview.js";
 
 export function mountAdminTab(panel) {
   panel.innerHTML = `
@@ -119,10 +120,20 @@ export function mountAdminTab(panel) {
     const previewEl = detailEl.querySelector("#admin-games-preview");
     previewEl.innerHTML = `<p class="hint">Carregando jogo...</p>`;
     try {
-      const [full] = await dbQuery("games", { select: "html_code", id: `eq.${g.id}` });
+      const [[full], loreRow, scores] = await Promise.all([
+        dbQuery("games", { select: "html_code", id: `eq.${g.id}` }),
+        fetchLore(g.id),
+        fetchScores(g.id).catch(() => []),
+      ]);
+      // Lore e avaliações também aparecem aqui — antes o painel só mostrava
+      // o jogo, então não tinha como o admin ler a lore de ninguém.
       previewEl.innerHTML = `
-        <div class="test-toolbar"><span>🎮 ${g.title}</span></div>
-        <iframe class="banca-frame" sandbox="allow-scripts" srcdoc="${(full?.html_code || "").replace(/"/g, "&quot;")}"></iframe>`;
+        <div class="test-toolbar"><span>🎮 ${escapeHtml(g.title)}</span></div>
+        <iframe class="banca-frame" sandbox="allow-scripts" srcdoc="${(full?.html_code || "").replace(/"/g, "&quot;")}"></iframe>
+        <div class="banca-details">
+          ${loreBlockHtml(loreRow)}
+          ${scoresBlockHtml(scores, state.session?.user?.id)}
+        </div>`;
     } catch (err) {
       previewEl.innerHTML = `<p class="hint">Erro ao carregar jogo: ${err.message}</p>`;
     }

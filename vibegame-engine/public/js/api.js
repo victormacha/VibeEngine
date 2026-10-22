@@ -20,10 +20,10 @@ function sleep(ms) {
 // serve` rodando), cai automaticamente para uma chamada direta à Gemini
 // com uma chave só de teste (sessionStorage). Isso NUNCA acontece fora de
 // localhost.
-export async function askAI({ userText, chatHistory, mechanics, sprites, lore, hasBackground, currentCode, mechanicsCustomized, onStatus }) {
+export async function askAI({ userText, chatHistory, mechanics, sprites, lore, hasBackground, currentCode, mechanicsCustomized, maps, onStatus }) {
   const hasExistingGame = chatHistory.some((m) => m.role === "model");
   const message = buildUserTurn(userText, {
-    mechanics, sprites, hasExistingGame, lore, hasBackground, currentCode, mechanicsCustomized,
+    mechanics, sprites, hasExistingGame, lore, hasBackground, currentCode, mechanicsCustomized, maps,
   });
   // Enxuga o histórico ANTES de enviar (ver slimHistoryForApi) — o código
   // completo do jogo atual já vai na mensagem acima, então repetir o HTML
@@ -240,8 +240,103 @@ export function parseAIResponse(rawText) {
   const combined = { ...htmlSprites, ...blockSprites };
   const sprites = Object.keys(combined).length ? combined : null;
 
-  return { code, info, sprites };
+  // Mapas (`if (!MAPAS.fase1) MAPAS.fase1 = { tile, legenda, linhas }`),
+  // mesmo esquema de extração dos sprites — vão pra aba Mapas.
+  const maps = extractEmbeddedMaps(code);
+
+  return { code, info, sprites, maps: Object.keys(maps).length ? maps : null };
 }
+
+// Recorta todos os objetos literais atribuídos a `PREFIXO.nome = {...}` (ou
+// `PREFIXO["nome"] = {...}`) e devolve [{ name, raw }] com o texto de cada um.
+// Balanceamento manual de chaves (respeitando strings) — sem eval.
+function sliceAssignedObjects(html, prefix) {
+  const out = [];
+  const assignRe = new RegExp(`${prefix}(?:\\.(\\w+)|\\[["'](\\w+)["']\\])\\s*=\\s*`, "g");
+  let m;
+  while ((m = assignRe.exec(html))) {
+    const name = m[1] || m[2];
+    const start = assignRe.lastIndex;
+    if (html[start] !== "{") continue;
+    let depth = 0;
+    let inStr = false;
+    let strCh = "";
+    let i = start;
+    for (; i < html.length; i++) {
+      const ch = html[i];
+      if (inStr) {
+        if (ch === "\\") { i++; continue; }
+        if (ch === strCh) inStr = false;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") { inStr = true; strCh = ch; continue; }
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) { i++; break; }
+      }
+    }
+    if (depth !== 0) continue;
+    out.push({ name, raw: html.slice(start, i) });
+    assignRe.lastIndex = i;
+  }
+  return out;
+}
+
+// Converte um objeto literal JS "simples" (chaves sem aspas, aspas simples,
+// vírgula sobrando) em JSON. Diferente da limpeza dos sprites, aqui as
+// strings são preservadas exatamente: linhas de mapa usam símbolos como
+// "#", "=", "^" e ":" que uma troca por regex no texto inteiro estragaria.
+function looseObjectToJson(raw) {
+  let out = "";
+  let i = 0;
+  while (i < raw.length) {
+    const ch = raw[i];
+    if (ch === '"' || ch === "'") {
+      let j = i + 1;
+      let str = "";
+      while (j < raw.length && raw[j] !== ch) {
+        if (raw[j] === "\\" && j + 1 < raw.length) { str += raw[j] + raw[j + 1]; j += 2; continue; }
+        str += raw[j];
+        j++;
+      }
+      // reescreve sempre com aspas duplas
+      out += '"' + str.replace(/\\'/g, "'").replace(/"/g, '\\"').replace(/\\\\"/g, '\\"') + '"';
+      i = j + 1;
+      continue;
+    }
+    const ident = /^[A-Za-z_$][\w$]*/.exec(raw.slice(i));
+    if (ident) {
+      const after = raw.slice(i + ident[0].length);
+      if (/^\s*:/.test(after)) out += `"${ident[0]}"`;
+      else out += ident[0];
+      i += ident[0].length;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out.replace(/,(\s*[}\]])/g, "$1");
+}
+
+function extractEmbeddedMaps(html) {
+  const maps = {};
+  sliceAssignedObjects(html, "MAPAS").forEach(({ name, raw }) => {
+    try {
+      const parsed = JSON.parse(looseObjectToJson(raw));
+      if (parsed && Array.isArray(parsed.linhas) && parsed.linhas.length && parsed.linhas.every((l) => typeof l === "string")) {
+        maps[name] = { tile: Number(parsed.tile || parsed.tamanho) || 32, legenda: parsed.legenda || {}, linhas: parsed.linhas };
+      }
+    } catch {
+      // mapa que não virou JSON — ignora só ele
+    }
+  });
+  return maps;
+}
+
+// Exposto pra aba Mapas conseguir "devolver pra IA": relê a versão do mapa
+// que está no código atual do jogo.
+export { extractEmbeddedMaps }
 
 // Varre o HTML gerado atrás de atribuições `SPR.nome = {...}` (ou
 // `SPR["nome"] = {...}`) e devolve um objeto { nome: { frames, frameDuration } }

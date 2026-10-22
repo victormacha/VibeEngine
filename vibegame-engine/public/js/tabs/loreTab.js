@@ -4,8 +4,8 @@
 // `ai_generated`, o que a aba Avaliação (bancaTab.js) usa pra avisar a
 // banca que aquela lore não foi escrita pelo aluno.
 import { state } from "../state.js";
-import { dbQuery } from "../supabaseClient.js";
 import { generateSimpleLore } from "../api.js";
+import { persistLore } from "../lore.js";
 import { toast } from "../ui.js";
 
 export function mountLoreTab(panel) {
@@ -41,7 +41,17 @@ export function mountLoreTab(panel) {
     // (o texto que vai ser salvo já não é mais 100% da IA) — só continua
     // marcado se o que está na caixa é EXATAMENTE o que a IA devolveu.
     badgeEl.hidden = textEl.value !== lastAIText;
+    // Guarda no estado a cada tecla: trocar de aba, salvar o jogo na aba
+    // Testar ou a sincronização da dupla não perdem mais o que foi escrito
+    // (antes o texto só existia dentro da caixa até clicar em Salvar lore).
+    syncState();
   });
+
+  function syncState() {
+    const content = textEl.value;
+    state.project.lore.content = content;
+    state.project.lore.aiGenerated = content === lastAIText && content.trim().length > 0;
+  }
 
   generateBtn.addEventListener("click", async () => {
     generateBtn.disabled = true;
@@ -51,6 +61,7 @@ export function mountLoreTab(panel) {
       textEl.value = text;
       lastAIText = text;
       badgeEl.hidden = false;
+      syncState();
       toast("Lore simples gerada pela IA — pode editar à vontade.", "info");
     } catch (err) {
       toast(err.message, "error");
@@ -61,28 +72,16 @@ export function mountLoreTab(panel) {
   });
 
   saveBtn.addEventListener("click", async () => {
+    syncState();
     if (!state.project.id) {
-      toast("Salve o jogo (aba Testar → Salvar) antes de salvar a lore.", "error");
+      // Jogo ainda não existe no banco (nunca foi salvo na aba Testar) — a
+      // lore fica guardada e vai junto no primeiro "Salvar" de lá.
+      toast("Lore guardada! Ela vai pro banco junto com o jogo quando você clicar em Salvar na aba Testar.", "info");
       return;
     }
-    const content = textEl.value;
-    const aiGenerated = content === lastAIText && content.trim().length > 0;
     saveBtn.disabled = true;
     try {
-      const [existing] = await dbQuery("lore", { select: "id", game_id: `eq.${state.project.id}` });
-      if (existing) {
-        await dbQuery("lore", { game_id: `eq.${state.project.id}` }, {
-          method: "PATCH",
-          body: { content, ai_generated: aiGenerated },
-        });
-      } else {
-        await dbQuery("lore", {}, {
-          method: "POST",
-          body: { game_id: state.project.id, content, ai_generated: aiGenerated },
-        });
-      }
-      state.project.lore.content = content;
-      state.project.lore.aiGenerated = aiGenerated;
+      await persistLore(state.project.id, state.project.lore.content, state.project.lore.aiGenerated);
       toast("Lore salva.", "success");
     } catch (err) {
       toast(err.message, "error");

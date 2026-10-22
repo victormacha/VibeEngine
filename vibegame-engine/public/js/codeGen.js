@@ -439,6 +439,204 @@ window.Vibe = (function () {
     };
   }
 
+  // ---------- Mapas em grade (tilemap) ----------
+  // Formato de um mapa (o mesmo que a aba Mapas edita e que a IA escreve):
+  //   { tile: 32, legenda: { "#": { tipo: "solido", cor: "#5a3d2b" }, ... },
+  //     linhas: ["..........", "....o.....", "##########"] }
+  // Cada caractere de "linhas" é uma célula; "." (ou espaço) = vazio. O tipo
+  // de cada caractere vem da legenda:
+  //   solido     — chão/parede: bloqueia por todos os lados
+  //   plataforma — só dá pra pousar por cima (atravessa pulando por baixo)
+  //   perigo     — espinho/lava: o jogo decide o que acontece ao encostar
+  //   item       — ponto onde nasce um coletável (não é desenhado pelo mapa)
+  //   inimigo    — ponto onde nasce um inimigo (não é desenhado pelo mapa)
+  //   jogador    — onde o jogador começa (não é desenhado pelo mapa)
+  //   saida      — porta/bandeira de fim de fase
+  //   decoracao  — só visual, sem colisão
+  // Caractere que não está na legenda conta como "solido".
+  var MAP_TIPOS_DESENHADOS = { solido: 1, plataforma: 1, perigo: 1, saida: 1, decoracao: 1 };
+
+  function loadMap(map) {
+    map = map || {};
+    var T = map.tile || map.tamanho || 32;
+    var linhas = map.linhas || [];
+    var legenda = map.legenda || {};
+    var rows = linhas.length, cols = 0;
+    for (var r = 0; r < rows; r++) cols = Math.max(cols, (linhas[r] || "").length);
+    var solidGrid = new Uint8Array(cols * rows);
+    var platGrid = new Uint8Array(cols * rows);
+    var world = {
+      tile: T, cols: cols, rows: rows, width: cols * T, height: rows * T,
+      jogador: null, itens: [], inimigos: [], perigos: [], saidas: [],
+      solidos: [], plataformas: [], decoracoes: [], tiles: [],
+    };
+    for (var y = 0; y < rows; y++) {
+      var linha = linhas[y] || "";
+      for (var x = 0; x < linha.length; x++) {
+        var ch = linha[x];
+        if (ch === "." || ch === " ") continue;
+        var def = legenda[ch] || { tipo: "solido", cor: "#666666" };
+        var cell = {
+          x: x * T, y: y * T, width: T, height: T, col: x, row: y,
+          char: ch, tipo: def.tipo || "solido", nome: def.nome || def.tipo || "solido", def: def,
+        };
+        if (cell.tipo === "solido") { solidGrid[y * cols + x] = 1; world.solidos.push(cell); }
+        else if (cell.tipo === "plataforma") { platGrid[y * cols + x] = 1; world.plataformas.push(cell); }
+        else if (cell.tipo === "perigo") world.perigos.push(cell);
+        else if (cell.tipo === "item") world.itens.push(cell);
+        else if (cell.tipo === "inimigo") world.inimigos.push(cell);
+        else if (cell.tipo === "jogador") { if (!world.jogador) world.jogador = cell; }
+        else if (cell.tipo === "saida") world.saidas.push(cell);
+        else world.decoracoes.push(cell);
+        if (MAP_TIPOS_DESENHADOS[cell.tipo]) world.tiles.push(cell);
+      }
+    }
+
+    world.isSolid = function (col, row) {
+      if (col < 0 || col >= cols) return true;   // bordas laterais do mapa são parede
+      if (row < 0) return false;                 // acima do mapa: livre (dá pra pular alto)
+      if (row >= rows) return false;             // abaixo: buraco (o jogo trata a queda)
+      return solidGrid[row * cols + col] === 1;
+    };
+    world.isPlatform = function (col, row) {
+      if (col < 0 || col >= cols || row < 0 || row >= rows) return false;
+      return platGrid[row * cols + col] === 1;
+    };
+    world.solidAt = function (px, py) { return world.isSolid(Math.floor(px / T), Math.floor(py / T)); };
+
+    // Desenha os tiles visíveis (com câmera, só o que está na tela). Se a
+    // legenda tiver "sprite: "nome"", usa esse sprite de SPR; senão, a cor.
+    world.draw = function (ctx, nowMs, cam) {
+      var sprites = window.VIBE_SPRITES || {};
+      var vx0 = cam ? cam.x - T : -Infinity, vx1 = cam ? cam.x + cam.canvasWidth + T : Infinity;
+      var vy0 = cam ? cam.y - T : -Infinity, vy1 = cam ? cam.y + cam.canvasHeight + T : Infinity;
+      for (var i = 0; i < world.tiles.length; i++) {
+        var t = world.tiles[i];
+        if (t.x < vx0 || t.x > vx1 || t.y < vy0 || t.y > vy1) continue;
+        var spr = t.def.sprite && sprites[t.def.sprite];
+        if (spr) { drawSprite(ctx, spr, "idle", nowMs || 0, t.x, t.y, T, T); continue; }
+        drawTile(ctx, t, T);
+      }
+    };
+    return world;
+  }
+
+  function shade(hex, amount) {
+    var m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+    if (!m) return hex;
+    var n = parseInt(m[1], 16);
+    var r = clamp((n >> 16) + amount, 0, 255), g = clamp(((n >> 8) & 255) + amount, 0, 255), b = clamp((n & 255) + amount, 0, 255);
+    return "rgb(" + r + "," + g + "," + b + ")";
+  }
+
+  function drawTile(ctx, t, T) {
+    var cor = t.def.cor || "#777777";
+    if (t.tipo === "plataforma") {
+      var h = Math.max(4, Math.round(T / 3));
+      ctx.fillStyle = cor; ctx.fillRect(t.x, t.y, T, h);
+      ctx.fillStyle = shade(cor, 40); ctx.fillRect(t.x, t.y, T, 2);
+      ctx.fillStyle = shade(cor, -40); ctx.fillRect(t.x, t.y + h - 2, T, 2);
+    } else if (t.tipo === "perigo") {
+      ctx.fillStyle = cor;
+      var n = 3, w = T / n;
+      ctx.beginPath();
+      for (var k = 0; k < n; k++) {
+        ctx.moveTo(t.x + k * w, t.y + T);
+        ctx.lineTo(t.x + k * w + w / 2, t.y + T * 0.35);
+        ctx.lineTo(t.x + (k + 1) * w, t.y + T);
+      }
+      ctx.fill();
+    } else if (t.tipo === "saida") {
+      ctx.fillStyle = shade(cor, -50); ctx.fillRect(t.x + T * 0.15, t.y, T * 0.1, T);
+      ctx.fillStyle = cor; ctx.fillRect(t.x + T * 0.25, t.y + T * 0.08, T * 0.6, T * 0.4);
+    } else {
+      ctx.fillStyle = cor; ctx.fillRect(t.x, t.y, T, T);
+      if (t.tipo === "solido") {
+        ctx.fillStyle = shade(cor, 35); ctx.fillRect(t.x, t.y, T, 3);
+        ctx.fillStyle = shade(cor, -30); ctx.fillRect(t.x, t.y + T - 2, T, 2);
+      }
+    }
+  }
+
+  // Move uma entidade {x,y,width,height} por (dx, dy) pixels respeitando o
+  // mapa: paredes/chão sólidos bloqueiam por todos os lados, plataformas só
+  // por cima. Resolve X e Y separados (é o que deixa deslizar encostado na
+  // parede sem travar). Atualiza entity.onGround (pisou em algo neste
+  // frame), entity.hitWall, entity.hitCeiling e zera vx/vy no eixo bloqueado.
+  // É A ÚNICA função de colisão necessária num jogo com mapa — não misture
+  // com groundCollide/platformsCollide pra mesma entidade.
+  function moveAndCollide(entity, dx, dy, world) {
+    var T = world.tile;
+    var EPS = 0.001;
+    entity.onGround = false;
+    entity.hitWall = false;
+    entity.hitCeiling = false;
+
+    // ---- eixo X ----
+    entity.x += dx;
+    if (dx !== 0) {
+      var r0 = Math.floor(entity.y / T), r1 = Math.floor((entity.y + entity.height - EPS) / T);
+      var col = dx > 0 ? Math.floor((entity.x + entity.width - EPS) / T) : Math.floor(entity.x / T);
+      for (var r = r0; r <= r1; r++) {
+        if (world.isSolid(col, r)) {
+          entity.x = dx > 0 ? col * T - entity.width : (col + 1) * T;
+          entity.vx = 0;
+          entity.hitWall = true;
+          break;
+        }
+      }
+    }
+
+    // ---- eixo Y ----
+    var prevBottom = entity.y + entity.height;
+    entity.y += dy;
+    var c0 = Math.floor(entity.x / T), c1 = Math.floor((entity.x + entity.width - EPS) / T);
+    if (dy > 0) {
+      var rowB = Math.floor((entity.y + entity.height - EPS) / T);
+      var top = rowB * T;
+      for (var c = c0; c <= c1; c++) {
+        var solid = world.isSolid(c, rowB) && rowB >= 0;
+        var plat = !solid && world.isPlatform(c, rowB) && prevBottom <= top + 1;
+        if (solid || plat) {
+          entity.y = top - entity.height;
+          entity.vy = 0;
+          entity.onGround = true;
+          break;
+        }
+      }
+    } else if (dy < 0) {
+      var rowT = Math.floor(entity.y / T);
+      for (var c2 = c0; c2 <= c1; c2++) {
+        if (rowT >= 0 && world.isSolid(c2, rowT)) {
+          entity.y = (rowT + 1) * T;
+          entity.vy = 0;
+          entity.hitCeiling = true;
+          break;
+        }
+      }
+    }
+    // Parado exatamente em cima de algo (dy = 0, ex.: jogo top-down ou frame
+    // sem gravidade): ainda conta como no chão.
+    if (!entity.onGround && dy >= 0) {
+      var feet = entity.y + entity.height;
+      var below = Math.round(feet / T);
+      if (Math.abs(feet - below * T) < 0.5) {
+        for (var c3 = c0; c3 <= c1; c3++) {
+          if ((below >= 0 && world.isSolid(c3, below)) || world.isPlatform(c3, below)) { entity.onGround = true; break; }
+        }
+      }
+    }
+    entity._vibePrevBottom = entity.y + entity.height;
+    return entity;
+  }
+
+  // Põe uma entidade em cima de uma célula do mapa (ex.: mundo.jogador,
+  // um item de mundo.itens): centralizada na horizontal e com o "pé"
+  // encostado no fundo da célula. Zera velocidade (igual placeEntity).
+  function placeOnTile(entity, cell) {
+    placeEntity(entity, cell.x + (cell.width - entity.width) / 2, cell.y + cell.height - entity.height);
+  }
+
   return {
     clamp: clamp,
     rectsOverlap: rectsOverlap,
@@ -453,11 +651,14 @@ window.Vibe = (function () {
     drawSprite: drawSprite,
     createCamera: createCamera,
     createParticleSystem: createParticleSystem,
+    loadMap: loadMap,
+    moveAndCollide: moveAndCollide,
+    placeOnTile: placeOnTile,
   };
 })();
 </script>`;
 
-export function assembleFinalGame(aiHtml, { sprites, mechanics, backgroundImage }) {
+export function assembleFinalGame(aiHtml, { sprites, mechanics, backgroundImage, maps }) {
   // Passa o sprite quase como está — os dois formatos (novo, com `anims`
   // nomeadas, ou antigo, de uma animação só) são resolvidos em tempo de
   // execução por Vibe.drawSprite (ver resolveAnim no motor auxiliar acima).
@@ -474,6 +675,17 @@ export function assembleFinalGame(aiHtml, { sprites, mechanics, backgroundImage 
   // instruída (prompts.js) a usar isso como pano de fundo do jogo quando
   // presente, em vez de desenhar/inventar um cenário do zero.
   const backgroundJson = JSON.stringify(backgroundImage || null);
+  // Mapas: só os que o ALUNO editou na aba Mapas entram aqui. Os que ainda
+  // são da IA já estão no próprio código do jogo (if (!MAPAS.x) MAPAS.x = ...)
+  // — injetar a cópia importada só arriscaria sobrescrever uma versão mais
+  // nova da IA com uma antiga.
+  const mapsJson = JSON.stringify(
+    Object.fromEntries(
+      Object.entries(maps || {})
+        .filter(([, m]) => m && m.origem === "aluno")
+        .map(([name, m]) => [name, { tile: m.tile, legenda: m.legenda, linhas: m.linhas }])
+    )
+  );
 
   // Rede de segurança de responsividade: independente do que a IA definiu
   // no <canvas>, isso garante que ele encolhe pra caber na tela (mobile ou
@@ -487,6 +699,7 @@ export function assembleFinalGame(aiHtml, { sprites, mechanics, backgroundImage 
     window.VIBE_SPRITES = ${spritesJson};
     window.VIBE_MECHANICS = ${mechanicsJson};
     window.VIBE_BACKGROUND = ${backgroundJson};
+    window.VIBE_MAPS = ${mapsJson};
 
     (function () {
       function showError(msg) {

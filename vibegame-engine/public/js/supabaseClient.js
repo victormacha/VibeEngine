@@ -118,7 +118,12 @@ export { SUPABASE_URL };
 // Query genérica contra o PostgREST do Supabase, já autenticada com a
 // sessão atual (renovando o token sozinho se estiver perto de vencer).
 // `filters` vira querystring PostgREST, ex: { select: "*", user_id: "eq.123" }.
-export async function dbQuery(table, filters = {}, { method = "GET", body } = {}) {
+// `prefer` substitui o cabeçalho Prefer padrão — ex.: upsert com
+// "resolution=merge-duplicates,return=representation" (precisa de
+// `on_conflict` nos filtros) ou "return=representation" num PATCH, pra
+// saber se alguma linha foi REALMENTE alterada (o RLS do Postgres não dá
+// erro quando bloqueia um UPDATE: só atualiza 0 linhas em silêncio).
+export async function dbQuery(table, filters = {}, { method = "GET", body, prefer } = {}) {
   assertConfigured();
   const session = await ensureFreshSession();
   const qs = new URLSearchParams(filters).toString();
@@ -128,11 +133,11 @@ export async function dbQuery(table, filters = {}, { method = "GET", body } = {}
       "Content-Type": "application/json",
       apikey: SUPABASE_ANON_KEY,
       Authorization: `Bearer ${session?.access_token || SUPABASE_ANON_KEY}`,
-      Prefer: method === "POST" ? "return=representation" : "return=minimal",
+      Prefer: prefer || (method === "POST" ? "return=representation" : "return=minimal"),
     },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) throw new Error(`Erro no banco (${table}): ${await res.text()}`);
-  if (method === "GET" || method === "POST") return res.json();
+  if (method === "GET" || method === "POST" || (prefer || "").includes("return=representation")) return res.json();
   return null;
 }

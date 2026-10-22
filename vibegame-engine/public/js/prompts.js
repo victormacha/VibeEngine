@@ -259,6 +259,7 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   const SPR = window.VIBE_SPRITES || {};
   const CFG = window.VIBE_MECHANICS || {};
   const BG = window.VIBE_BACKGROUND || null; // data URL (ou null) — fundo carregado na aba Perfil
+  const MAPAS = window.VIBE_MAPS || {}; // mapas em grade (ver seção "Mapas em grade")
 
 - Se \`BG\` não for null, é uma imagem (data URL) que o aluno escolheu como
   fundo das fases na aba Perfil — desenhe-a cobrindo o <canvas> ANTES de
@@ -363,6 +364,83 @@ No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   Nunca substitua um valor presente em CFG por um "padrão mais comum pro
   gênero" — isso é exatamente o erro que estraga jogos personalizados.
 
+## Mapas em grade (MAPAS) — use pra QUALQUER jogo com fase/cenário fixo
+Plataforma, top-down, labirinto, puzzle em grade, dungeon: o cenário (chão,
+paredes, plataformas, espinhos, onde nascem itens/inimigos/jogador, a saída)
+deve vir de um MAPA EM TEXTO, nunca de listas de retângulos escritas à mão
+(\`plataformas = [{x:..., y:...}]\`) nem de geração aleatória. É o mapa que o
+aluno abre na aba Mapas e edita pintando, então ele precisa existir nesse
+formato. (Corredor infinito e nave/tiro com tela que rola sozinha podem
+continuar gerando obstáculos por código — não force mapa onde não cabe.)
+
+No topo do <script>, junto de SPR/CFG/BG:
+  const MAPAS = window.VIBE_MAPS || {};
+Cada fase é inicializada com o MESMO padrão dos sprites — não mude a forma
+dessa linha (a engine extrai o mapa de volta pra aba Mapas direto dela):
+\`\`\`
+if (!MAPAS.fase1) MAPAS.fase1 = {
+  tile: 32,
+  legenda: {
+    "#": { tipo: "solido", cor: "#6b4a2f" },
+    "=": { tipo: "plataforma", cor: "#9c6b3c" },
+    "^": { tipo: "perigo", cor: "#e04848" },
+    "o": { tipo: "item", cor: "#ffd23f", nome: "moeda" },
+    "E": { tipo: "inimigo", cor: "#c0392b", nome: "slime" },
+    "P": { tipo: "jogador", cor: "#3fa7ff" },
+    "F": { tipo: "saida", cor: "#2ecc71" }
+  },
+  linhas: [
+    "........................................",
+    "...........o.o.o........................",
+    "..........======..............E.......F.",
+    "..P.............................#########",
+    "#########....^^^....#####################"
+  ]
+};
+\`\`\`
+- Tipos válidos: solido (bloqueia por todos os lados), plataforma (só pousa
+  por cima), perigo, item, inimigo, jogador, saida, decoracao (só visual).
+  "." = vazio. Todas as linhas com o MESMO comprimento. Um "P" por mapa.
+- Caracteres da legenda: letras, números ou um destes: # = ^ ~ * + - | / ! ?
+  @ $ % & < > (nunca aspas, vírgula, chaves, dois-pontos ou barra invertida).
+- \`cor\` define a cor do tile; opcionalmente \`sprite: "nomeDoSprite"\` (de
+  SPR) desenha o tile com um sprite em vez da cor.
+- Tamanho: fases de plataforma ~40-120 colunas x 12-18 linhas (com câmera);
+  top-down/labirinto do tamanho da tela ou um pouco maior. tile 32 (ou 24/48).
+- Várias fases = vários mapas (MAPAS.fase1, MAPAS.fase2, ...), cada um com o
+  padrão \`if (!MAPAS.x) MAPAS.x = {...}\`.
+
+Usando o mapa no jogo (window.Vibe já tem tudo pronto):
+\`\`\`
+var mundo = Vibe.loadMap(MAPAS.fase1); // chame de novo ao reiniciar/trocar de fase
+// mundo.width / mundo.height (px), mundo.tile,
+// mundo.jogador (célula {x,y,width,height}), mundo.itens, mundo.inimigos,
+// mundo.perigos, mundo.saidas — listas de células {x,y,width,height,nome,char}
+Vibe.placeOnTile(jogador, mundo.jogador);       // jogador nasce em pé no "P"
+var cam = Vibe.createCamera({ canvasWidth: canvas.width, canvasHeight: canvas.height, worldWidth: mundo.width, worldHeight: mundo.height });
+// no loop (plataforma):
+jumpCtrl.update(jogador, dt, jumpPressed, jumpHeld);
+Vibe.moveAndCollide(jogador, jogador.vx * dt * 60, jogador.vy * dt * 60, mundo);
+// (top-down: mesma chamada, só sem gravidade/pulo)
+// desenho:
+cam.apply(ctx); mundo.draw(ctx, nowMs, cam); /* itens, inimigos, jogador */ cam.restore(ctx);
+\`\`\`
+- \`Vibe.moveAndCollide(entidade, dx, dy, mundo)\` move E colide (paredes,
+  chão, teto, plataformas de mão única) e atualiza \`onGround\`, \`hitWall\`
+  e \`hitCeiling\`. Com mapa, é a ÚNICA colisão de cenário — NÃO use
+  groundCollide/platformsCollide/GROUND_Y junto. Use pra inimigos também
+  (\`hitWall\` = hora de virar na patrulha).
+- Itens e inimigos: crie as entidades a partir de \`mundo.itens\`/\`mundo.inimigos\`
+  (ex.: \`mundo.inimigos.map(function (c) { var e = {...}; Vibe.placeOnTile(e, c); return e; })\`)
+  — o mapa marca ONDE nascem, quem desenha e anima é o seu código.
+- Perigos: \`mundo.perigos.some(function (p) { return Vibe.rectsOverlap(jogador, p); })\`
+  (com o cooldown de dano). Saída: overlap com \`mundo.saidas\` = venceu a fase.
+- Caiu abaixo de \`mundo.height\` = caiu no buraco (perde vida/respawn no "P").
+- Se a mensagem disser que um mapa foi EDITADO PELO ALUNO, ele vale mais que
+  o seu: mantenha a linha \`if (!MAPAS.x) MAPAS.x = ...\` como está e use
+  MAPAS.x normalmente — a versão do aluno chega por window.VIBE_MAPS e
+  substitui a sua sozinha. Nunca leia o mapa de outra variável.
+
 ## Técnica de pixel art (quando desenhar você mesmo)
 - Desenhe pixel a pixel no FORMATO LEVE (paleta de letras + linhas de texto,
   ver "Integração com a engine"), nunca como formas vetoriais suaves
@@ -450,6 +528,10 @@ corrija isso agora mesmo sem que o aluno precise pedir.
 - [ ] Todo sprite novo foi inicializado com \`if (!SPR.nome) SPR.nome = { paleta: {...}, anims: { idle: {...}, ... } };\`
       exatamente nesse formato (a engine extrai os sprites direto dessa
       linha — fugir do formato faz o sprite não voltar pro aluno editar).
+- [ ] Se o jogo tem fase/cenário fixo: o cenário veio de um mapa em
+      \`MAPAS.x\` (padrão \`if (!MAPAS.x) MAPAS.x = {...}\`), carregado com
+      \`Vibe.loadMap\` e colidido com \`Vibe.moveAndCollide\` — nenhuma lista
+      de plataformas escrita à mão, nenhum GROUND_Y junto do mapa.
 - [ ] Os frames que VOCÊ desenhou são listas de strings (uma letra por
       pixel, "." transparente) com uma paleta de letras — nenhuma matriz de
       cores do tipo [["#3b2f2f",null,...]] em lugar nenhum da resposta.
@@ -466,8 +548,9 @@ export const GENRE_TEMPLATES = {
   tiro: "Crie um jogo de tiro (shooter) estilo Asteroids/Galaga, com nave controlável e inimigos ou obstáculos vindos da tela.",
 };
 
-export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame, lore, hasBackground, currentCode, mechanicsCustomized }) {
+export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame, lore, hasBackground, currentCode, mechanicsCustomized, maps }) {
   const spriteEntries = Object.entries(sprites || {});
+  const studentMaps = Object.entries(maps || {}).filter(([, m]) => m?.origem === "aluno");
   const context = [
     mechanicsCustomized
       ? `Configuração da engine (CFG) — o aluno CONFIGUROU a aba Mecânicas de propósito pra ` +
@@ -499,13 +582,24 @@ export function buildUserTurn(userText, { mechanics, sprites, hasExistingGame, l
           })
           .join("; ")
       : "Nenhum sprite manual ainda — desenhe você mesmo com capricho, seguindo a técnica de pixel art.",
+    studentMaps.length
+      ? `Mapas EDITADOS PELO ALUNO na aba Mapas (a versão dele vence a sua — leia de MAPAS, ` +
+        `mantenha a inicialização if (!MAPAS.x) e não troque o mapa por listas de plataformas): ` +
+        studentMaps
+          .map(([name, m]) => {
+            const cols = Math.max(0, ...(m.linhas || []).map((l) => l.length));
+            const legenda = Object.entries(m.legenda || {}).map(([ch, d]) => `"${ch}"=${d.tipo}${d.nome ? `(${d.nome})` : ""}`).join(" ");
+            return `${name} [${cols}x${(m.linhas || []).length}, tile ${m.tile}; legenda: ${legenda}]`;
+          })
+          .join("; ")
+      : "",
     hasExistingGame && currentCode
       ? `Código HTML ATUAL do jogo (já com todas as edições anteriores aplicadas) — edite ESTE ` +
         `arquivo e devolva ele completo de novo com a alteração pedida. Ignore qualquer versão ` +
         `de jogo mencionada mais cedo nesta conversa: já foi substituída por este código:\n` +
         `\`\`\`html\n${currentCode}\n\`\`\``
       : "Este é o primeiro pedido — crie o jogo do zero.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 
   return `${context}\n\nPedido do aluno: ${userText}`;
 }

@@ -62,8 +62,52 @@ export const state = {
                       // qualquer sprite de forma uniforme, os dois formatos convivem.)
 
     mechanics: { ...DEFAULT_MECHANICS },
+
+    // Mapas em grade (aba Mapas): nome -> { tile, legenda, linhas, origem }.
+    // origem "ia" = importado do código que a IA escreveu (a IA continua
+    // dona dele e pode refazê-lo a cada pedido); origem "aluno" = o aluno
+    // editou na aba Mapas — a partir daí a versão do aluno é a que vale no
+    // jogo (injetada como window.VIBE_MAPS) e a IA não sobrescreve mais.
+    maps: {},
   },
 };
+
+// Tipos de tile que a engine entende (ver Vibe.loadMap em codeGen.js).
+export const MAP_TILE_TYPES = [
+  { id: "solido", label: "Sólido (chão/parede)" },
+  { id: "plataforma", label: "Plataforma (pousa por cima)" },
+  { id: "perigo", label: "Perigo (espinho/lava)" },
+  { id: "item", label: "Item (coletável)" },
+  { id: "inimigo", label: "Inimigo (nasce aqui)" },
+  { id: "jogador", label: "Jogador (começa aqui)" },
+  { id: "saida", label: "Saída (fim da fase)" },
+  { id: "decoracao", label: "Decoração (sem colisão)" },
+];
+
+// Legenda inicial de um mapa criado do zero na aba Mapas.
+export const DEFAULT_MAP_LEGEND = {
+  "#": { tipo: "solido", cor: "#6b4a2f" },
+  "=": { tipo: "plataforma", cor: "#9c6b3c" },
+  "^": { tipo: "perigo", cor: "#e04848" },
+  "o": { tipo: "item", cor: "#ffd23f", nome: "moeda" },
+  "E": { tipo: "inimigo", cor: "#c0392b", nome: "inimigo" },
+  "P": { tipo: "jogador", cor: "#3fa7ff" },
+  "F": { tipo: "saida", cor: "#2ecc71" },
+  "~": { tipo: "decoracao", cor: "#3b5b7a" },
+};
+
+// Garante o formato que a aba Mapas e o jogo esperam: linhas todas com a
+// mesma largura, tile numérico e legenda presente.
+export function normalizeMap(map) {
+  const linhas = Array.isArray(map?.linhas) ? map.linhas.map((l) => String(l)) : [];
+  const cols = Math.max(1, ...linhas.map((l) => l.length));
+  return {
+    tile: Number(map?.tile || map?.tamanho) || 32,
+    legenda: map?.legenda && typeof map.legenda === "object" ? map.legenda : { ...DEFAULT_MAP_LEGEND },
+    linhas: linhas.length ? linhas.map((l) => l.padEnd(cols, ".")) : [".".repeat(cols)],
+    origem: map?.origem === "aluno" ? "aluno" : "ia",
+  };
+}
 
 export function updateMechanics(patch) {
   Object.assign(state.project.mechanics, patch);
@@ -126,6 +170,7 @@ export function loadProjectFromRow(row) {
   state.project.teamName = row.team_name || "";
   state.project.partnerId = row.partner_id || null;
   Object.assign(state.project.mechanics, row.mechanics || {});
+  state.project.maps = row.maps && typeof row.maps === "object" ? row.maps : {};
 }
 
 // Recarrega a lore (tabela separada `lore`, uma linha por jogo) de volta

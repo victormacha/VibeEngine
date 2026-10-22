@@ -1,4 +1,4 @@
-import { state, saveSprite, normalizeSprite, mechanicsCustomized } from "../state.js";
+import { state, saveSprite, normalizeSprite, mechanicsCustomized, normalizeMap } from "../state.js";
 import { askAI, parseAIResponse } from "../api.js";
 import { toast } from "../ui.js";
 
@@ -71,11 +71,12 @@ export function mountChatTab(panel, { onGameUpdated }) {
         hasBackground: !!state.project.backgroundImage,
         currentCode: state.project.gameCode || null,
         mechanicsCustomized: mechanicsCustomized(state.project.mechanics),
+        maps: state.project.maps,
         onStatus: (elapsedSeconds) => {
           thinking.textContent = `Gerando o jogo... (${elapsedSeconds}s — pode levar até 1-2 minutos pra jogos mais elaborados)`;
         },
       });
-      const { code, info, sprites } = parseAIResponse(raw);
+      const { code, info, sprites, maps } = parseAIResponse(raw);
       state.project.chatHistory.push({ role: "model", text: raw });
       state.project.gameCode = code;
       state.project.gameInfo = info;
@@ -99,10 +100,29 @@ export function mountChatTab(panel, { onGameUpdated }) {
         });
       }
 
+      // Mapas que a IA escreveu: vão pra aba Mapas. Os que ainda são "da IA"
+      // são sempre substituídos pela versão nova (a IA pode ter mudado o
+      // mapa nesse pedido); os que o aluno já editou ficam como estão — a
+      // versão dele é a que vale no jogo.
+      const newMapNames = [];
+      Object.entries(maps || {}).forEach(([name, map]) => {
+        const current = state.project.maps[name];
+        if (current?.origem === "aluno") return;
+        if (!current) newMapNames.push(name);
+        state.project.maps[name] = { ...normalizeMap(map), origem: "ia" };
+      });
+      // Mapa "da IA" que sumiu do código novo (a IA renomeou/removeu) sai da aba.
+      Object.keys(state.project.maps).forEach((name) => {
+        if (state.project.maps[name].origem === "ia" && !(maps && maps[name])) delete state.project.maps[name];
+      });
+
       thinking.remove();
       addMessage("model", info ? `✅ ${info.titulo} — ${info.objetivo}` : "✅ Jogo atualizado.");
       if (newSpriteCount > 0) {
         addMessage("system", `🎨 ${newSpriteCount} sprite(s) desenhado(s) pela IA foram importados para a aba Personagens — você já pode editá-los lá.`);
+      }
+      if (newMapNames.length) {
+        addMessage("system", `🗺️ Mapa(s) criado(s) pela IA: ${newMapNames.join(", ")} — abra a aba Mapas pra editar do seu jeito.`);
       }
       onGameUpdated();
     } catch (err) {
