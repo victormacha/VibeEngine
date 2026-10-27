@@ -62,6 +62,11 @@ export const state = {
                       // qualquer sprite de forma uniforme, os dois formatos convivem.)
 
     mechanics: { ...DEFAULT_MECHANICS },
+
+    // Só leitura, por compatibilidade: mapas pintados pelo aluno na antiga
+    // aba Mapas (coluna games.maps). São reinjetados no jogo (codeGen) pra
+    // jogos daquela época continuarem iguais; não são mais editados nem salvos.
+    maps: {},
   },
 };
 
@@ -126,6 +131,7 @@ export function loadProjectFromRow(row) {
   state.project.teamName = row.team_name || "";
   state.project.partnerId = row.partner_id || null;
   Object.assign(state.project.mechanics, row.mechanics || {});
+  state.project.maps = row.maps && typeof row.maps === "object" ? row.maps : {};
 }
 
 // Recarrega a lore (tabela separada `lore`, uma linha por jogo) de volta

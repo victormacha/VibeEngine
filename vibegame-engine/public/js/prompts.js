@@ -229,6 +229,12 @@ e libera espaço/atenção pra você focar na mecânica específica do jogo.
   (colisão AABB simples pra dano/coleta, fora do contexto de chão),
   \`Vibe.createCooldown(segundos)\` (qualquer "só pode acontecer de novo
   depois de X segundos": dano, ataque, dash, etc.).
+- Jogos antigos com mapa em texto: se o código ATUAL que vem na mensagem já
+  usa \`MAPAS.x = { tile, legenda, linhas }\` com \`Vibe.loadMap\`,
+  \`Vibe.moveAndCollide\` e \`mundo.draw\`, essas funções continuam existindo —
+  mantenha esse esquema funcionando (não apague o mapa nem troque por outro
+  sistema). Pra mudar a fase, edite as \`linhas\` do mapa. Em jogos NOVOS,
+  não use esse esquema.
 
 Você ainda pode escrever física própria pra algo muito específico que o
 Vibe não cobre (ex. um dash com i-frames, um projétil com trajetória

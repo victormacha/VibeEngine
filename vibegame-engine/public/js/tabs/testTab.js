@@ -68,6 +68,7 @@ export function mountTestTab(panel) {
       sprites: state.project.sprites,
       mechanics: state.project.mechanics,
       backgroundImage: state.project.backgroundImage,
+      maps: state.project.maps,
     });
     renderInto(finalHtml);
   }
@@ -80,6 +81,7 @@ export function mountTestTab(panel) {
       sprites: state.project.sprites,
       mechanics: state.project.mechanics,
       backgroundImage: state.project.backgroundImage,
+      maps: state.project.maps,
     });
     const blob = new Blob([finalHtml], { type: "text/html" });
     window.open(URL.createObjectURL(blob), "_blank");
@@ -91,6 +93,7 @@ export function mountTestTab(panel) {
       sprites: state.project.sprites,
       mechanics: state.project.mechanics,
       backgroundImage: state.project.backgroundImage,
+      maps: state.project.maps,
     });
     const blob = new Blob([finalHtml], { type: "text/html" });
     const a = document.createElement("a");
@@ -110,7 +113,8 @@ export function mountTestTab(panel) {
         sprites: state.project.sprites,
         mechanics: state.project.mechanics,
         backgroundImage: state.project.backgroundImage,
-        }),
+        maps: state.project.maps,
+      }),
       game_code: state.project.gameCode,
       chat_history: state.project.chatHistory,
       sprites: state.project.sprites,
