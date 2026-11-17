@@ -349,3 +349,33 @@ on conflict (version) do nothing;
 -- Dica: para transformar um usuário em "banca" ou "admin" depois do
 -- cadastro, rode manualmente (uma vez, com o e-mail da pessoa):
 --   update profiles set role = 'banca' where email = 'avaliador@escola.com';
+
+-- NOVO (nov/2026) — Fundo das fases no Storage, não mais em base64 na
+-- tabela. games.background_image passa a guardar a URL pública do arquivo
+-- (jogos antigos foram convertidos por supabase/migracao-2026-11/).
+insert into storage.buckets (id, name, public)
+values ('game-backgrounds', 'game-backgrounds', true)
+on conflict (id) do nothing;
+
+drop policy if exists "usuario envia fundo" on storage.objects;
+create policy "usuario envia fundo" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'game-backgrounds'
+              and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+drop policy if exists "usuario troca fundo" on storage.objects;
+create policy "usuario troca fundo" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'game-backgrounds'
+         and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+drop policy if exists "usuario apaga fundo" on storage.objects;
+create policy "usuario apaga fundo" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'game-backgrounds'
+         and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+create index if not exists games_status_submitted_idx on games (status, submitted_at desc);
+create index if not exists games_user_updated_idx     on games (user_id, updated_at desc);
+create index if not exists games_partner_idx          on games (partner_id);
+create index if not exists scores_game_idx            on scores (game_id);

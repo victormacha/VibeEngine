@@ -105,14 +105,21 @@ export function startTeamSync({ onRemoteChange } = {}) {
   pollTimer = setInterval(async () => {
     if (!state.project.id || !state.project.partnerId) return;
     try {
-      const [row] = await dbQuery("games", { select: "*", id: `eq.${state.project.id}` });
-      if (!row) return;
+      // A cada tick busca SÓ o updated_at (poucos bytes). Antes era
+      // select "*" a cada 4s — o projeto inteiro (chat, código, sprites,
+      // fundo) baixado sem parar por cada integrante da dupla, o que
+      // sozinho já consumia boa parte da cota de transferência do Supabase.
+      const [meta] = await dbQuery("games", { select: "updated_at", id: `eq.${state.project.id}` });
+      if (!meta) return;
       if (lastSeenUpdatedAt === null) {
-        lastSeenUpdatedAt = row.updated_at;
+        lastSeenUpdatedAt = meta.updated_at;
         return; // primeira leitura só define a base de comparação
       }
-      if (row.updated_at && row.updated_at !== lastSeenUpdatedAt) {
-        lastSeenUpdatedAt = row.updated_at;
+      if (meta.updated_at && meta.updated_at !== lastSeenUpdatedAt) {
+        lastSeenUpdatedAt = meta.updated_at;
+        // Mudou de verdade: aí sim busca a linha completa, uma vez.
+        const [row] = await dbQuery("games", { select: "*", id: `eq.${state.project.id}` });
+        if (!row) return;
         loadProjectFromRow(row);
         const [loreRow] = await dbQuery("lore", { select: "*", game_id: `eq.${row.id}` }).catch(() => [null]);
         if (loreRow) loadLoreFromRow(loreRow);

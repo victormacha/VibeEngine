@@ -23,7 +23,15 @@ export function mountBancaTab(panel) {
 
   async function loadGames() {
     try {
-      const games = await dbQuery("games", { select: "*", status: "eq.enviado", order: "submitted_at.desc" });
+      const games = await dbQuery("games", {
+        // Lista LEVE: só o que o card usa. Antes era select "*", que trazia
+        // html_code, chat_history, sprites e o fundo de TODOS os jogos
+        // enviados de uma vez (dezenas de MB) e estourava o statement
+        // timeout do Supabase. O código do jogo só vem em openGame().
+        select: "id,title,genre,user_id,partner_id,team_name,submitted_at",
+        status: "eq.enviado",
+        order: "submitted_at.desc",
+      });
       if (!games.length) {
         listEl.innerHTML = `<p class="hint">Nenhum jogo enviado ainda.</p>`;
         return;
@@ -75,7 +83,7 @@ export function mountBancaTab(panel) {
         ${teamLine}
       </div>
       <div id="banca-lore-warning" hidden></div>
-      <iframe class="banca-frame" sandbox="allow-scripts" srcdoc="${game.html_code.replace(/"/g, "&quot;")}"></iframe>
+      <div id="banca-frame-wrap"><p class="hint">Carregando jogo...</p></div>
       <div class="banca-details">
         <div id="banca-lore"><p class="hint">Carregando lore...</p></div>
         <div id="banca-scores"><p class="hint">Carregando avaliações...</p></div>
@@ -91,6 +99,18 @@ export function mountBancaTab(panel) {
     const scoreInput = previewEl.querySelector("#score-input");
     const commentInput = previewEl.querySelector("#score-comment");
     const submitBtn = previewEl.querySelector("#score-submit");
+
+    // O HTML do jogo é a parte pesada — buscado só agora, pra este jogo.
+    dbQuery("games", { select: "html_code", id: `eq.${game.id}` })
+      .then(([full]) => {
+        const wrap = previewEl.querySelector("#banca-frame-wrap");
+        if (!wrap) return;
+        wrap.outerHTML = `<iframe class="banca-frame" sandbox="allow-scripts" srcdoc="${(full?.html_code || "").replace(/"/g, "&quot;")}"></iframe>`;
+      })
+      .catch((err) => {
+        const wrap = previewEl.querySelector("#banca-frame-wrap");
+        if (wrap) wrap.innerHTML = `<p class="hint">Erro ao carregar o jogo: ${escapeHtml(err.message)}</p>`;
+      });
 
     // Lore: texto completo pra banca ler + aviso quando foi a IA que escreveu.
     // O botão de zerar só preenche a nota como atalho — a decisão é da banca.
