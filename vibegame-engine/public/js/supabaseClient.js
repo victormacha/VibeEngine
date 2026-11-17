@@ -123,6 +123,28 @@ export { SUPABASE_URL };
 // `on_conflict` nos filtros) ou "return=representation" num PATCH, pra
 // saber se alguma linha foi REALMENTE alterada (o RLS do Postgres não dá
 // erro quando bloqueia um UPDATE: só atualiza 0 linhas em silêncio).
+// Envia um arquivo pro Supabase Storage (bucket público) e devolve a URL
+// pública dele. Usado pro fundo das fases: antes a imagem ia em base64
+// direto na tabela `games` (~1-2 MB por linha), o que deixava toda consulta
+// lenta (statement timeout) e estourava a cota de transferência do plano.
+export async function uploadPublicFile(bucket, path, blob, contentType) {
+  assertConfigured();
+  const session = await ensureFreshSession();
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${session?.access_token || SUPABASE_ANON_KEY}`,
+      "Content-Type": contentType || blob.type || "application/octet-stream",
+      "x-upsert": "true",
+      "cache-control": "31536000",
+    },
+    body: blob,
+  });
+  if (!res.ok) throw new Error(`Erro ao enviar arquivo: ${await res.text()}`);
+  return `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+}
+
 export async function dbQuery(table, filters = {}, { method = "GET", body, prefer } = {}) {
   assertConfigured();
   const session = await ensureFreshSession();

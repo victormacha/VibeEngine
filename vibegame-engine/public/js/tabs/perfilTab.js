@@ -3,7 +3,7 @@
 // de dupla (item 5), já que é o lugar mais natural pra "meu perfil / meu
 // jogo atual" incluir com quem estou fazendo esse jogo.
 import { state } from "../state.js";
-import { dbQuery } from "../supabaseClient.js";
+import { dbQuery, uploadPublicFile } from "../supabaseClient.js";
 import { toast } from "../ui.js";
 import { getTotalSecondsForDisplay, formatSeconds, isTrackingActive } from "../usageTracking.js";
 import { findPartnerByEmail, startTeamSync } from "../team.js";
@@ -136,7 +136,27 @@ export function mountPerfilTab(panel, { onProjectChanged } = {}) {
     reader.readAsDataURL(file);
   });
 
+  // O fundo vai pro Supabase Storage e a tabela guarda só a URL. Antes a
+  // imagem ia inteira em base64 pra coluna games.background_image (e também
+  // embutida no html_code), deixando cada linha com 1-2 MB.
+  async function uploadBackground(dataUrl) {
+    const userId = state.session?.user?.id;
+    if (!userId || userId === "dev-local") return dataUrl; // modo de teste local: fica em memória
+    const blob = await (await fetch(dataUrl)).blob();
+    const ext = (blob.type.split("/")[1] || "png").replace("jpeg", "jpg").replace("svg+xml", "svg");
+    const path = `${userId}/${Date.now()}.${ext}`;
+    return uploadPublicFile("game-backgrounds", path, blob, blob.type);
+  }
+
   panel.querySelector("#perfil-bg-save").addEventListener("click", async () => {
+    if (pendingBackground && pendingBackground.startsWith("data:")) {
+      try {
+        pendingBackground = await uploadBackground(pendingBackground);
+      } catch (err) {
+        toast(err.message, "error");
+        return;
+      }
+    }
     await persist({ backgroundImage: pendingBackground });
     toast("Fundo salvo — a IA vai usá-lo no próximo jogo gerado/reiniciado.", "success");
     onProjectChanged?.();

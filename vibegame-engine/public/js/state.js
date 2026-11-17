@@ -41,7 +41,7 @@ export const state = {
     gameCode: "",    // HTML/JS final retornado pela IA
     gameInfo: null,  // { titulo, genero, controles, objetivo }
 
-    backgroundImage: null, // data URL do fundo das fases (aba Perfil) — vira window.VIBE_BACKGROUND no jogo final
+    backgroundImage: null, // URL (Supabase Storage) do fundo das fases (aba Perfil; jogos antigos podem ter data URL) — vira window.VIBE_BACKGROUND no jogo final
 
     // Sistema de dupla: teamName é obrigatório antes de enviar pra avaliação;
     // partnerId (uuid do colega) é o que dá acesso ao MESMO projeto pra ele,

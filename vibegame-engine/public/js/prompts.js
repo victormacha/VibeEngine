@@ -264,9 +264,9 @@ escrever nada a mais. Por isso:
 No topo do <script>, ANTES de qualquer outra coisa, leia (sem redeclarar):
   const SPR = window.VIBE_SPRITES || {};
   const CFG = window.VIBE_MECHANICS || {};
-  const BG = window.VIBE_BACKGROUND || null; // data URL (ou null) — fundo carregado na aba Perfil
+  const BG = window.VIBE_BACKGROUND || null; // URL da imagem (ou null) — fundo carregado na aba Perfil
 
-- Se \`BG\` não for null, é uma imagem (data URL) que o aluno escolheu como
+- Se \`BG\` não for null, é uma imagem (URL) que o aluno escolheu como
   fundo das fases na aba Perfil — desenhe-a cobrindo o <canvas> ANTES de
   qualquer entidade, em toda fase/tela de jogo (não só na tela de menu).
   Carregue com \`new Image()\` (\`img.src = BG\`) e só desenhe depois que
